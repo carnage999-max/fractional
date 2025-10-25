@@ -1,0 +1,6 @@
+@tailwind base; @tailwind components; @tailwind utilities;
+:root{ --radius:16px; }
+*{ box-sizing:border-box; } html,body{ height:100%; }
+body{ background-color:theme('colors.background'); color:theme('colors.foreground'); }
+html{ scroll-behavior:smooth; } ::selection{ background:rgba(34,197,94,0.3); color:#eaffea; }
+button:focus-visible{ outline:none; box-shadow:0 0 0 2px rgba(34,197,94,0.5) inset; }
