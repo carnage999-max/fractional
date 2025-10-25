@@ -1,8 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import db from "@/lib/db";
-export async function GET(req: NextRequest){
-  const { searchParams } = new URL(req.url);
-  const owner = String(searchParams.get("owner") || "0.0.user");
-  const holdings = db.holdings.get(owner) || [];
-  return NextResponse.json({ owner, holdings });
+import { dbService } from "@/lib/dbService";
+
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const account = searchParams.get("account");
+    
+    if (!account) {
+      return NextResponse.json({ error: "account is required" }, { status: 400 });
+    }
+    
+    const holdings = await dbService.getHoldings(account);
+    return NextResponse.json({ holdings });
+  } catch (error) {
+    console.error("Error fetching portfolio:", error);
+    return NextResponse.json({ error: "Failed to fetch portfolio" }, { status: 500 });
+  }
 }

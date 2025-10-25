@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import db from "@/lib/db";
-export async function GET(_: NextRequest, { params }: { params: { id: string }}){
-  const item = db.assets.find(a=>a.id===params.id);
-  if(!item) return NextResponse.json({error:"Not found"},{status:404});
-  return NextResponse.json({ item });
+import { dbService } from "@/lib/dbService";
+
+export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+  try {
+    const asset = await dbService.getAssetById(params.id);
+    
+    if (!asset) {
+      return NextResponse.json({ error: "Asset not found" }, { status: 404 });
+    }
+    
+    return NextResponse.json(asset);
+  } catch (error) {
+    console.error("Error fetching asset:", error);
+    return NextResponse.json({ error: "Failed to fetch asset" }, { status: 500 });
+  }
 }

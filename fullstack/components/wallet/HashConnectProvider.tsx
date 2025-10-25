@@ -1,6 +1,7 @@
 "use client";
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 
+/** Extension-only (HashConnect v2) context */
 type WalletContextType = {
   accountId: string | null;
   connect: () => Promise<void>;
@@ -23,97 +24,103 @@ export default function HashConnectProvider({ children }: { children: React.Reac
   const [hc, setHc] = useState<any>(null);
   const [pairing, setPairing] = useState<any>(null);
   const [status, setStatus] = useState<string>("init");
-  const accountId = pairing?.accountIds?.[0] || null;
   const mounted = useRef(true);
+  const accountId = pairing?.accountIds?.[0] || null;
+
+  const log = (...a: any[]) => console.log("[Wallet(ext-only)]", ...a);
+
+  const waitForDomReady = () =>
+    new Promise<void>((resolve) => {
+      if (document.readyState === "complete") return resolve();
+      const onReady = () => { resolve(); window.removeEventListener("load", onReady); };
+      window.addEventListener("load", onReady);
+    });
 
   useEffect(() => {
     mounted.current = true;
     (async () => {
       try {
+        setStatus("loading:dom");
+        await waitForDomReady();
+
         setStatus("loading:import");
-        // dynamic import only in browser
-        const { HashConnect } = await import("hashconnect");
-        setStatus("loading:init");
+        const { HashConnect } = await import("hashconnect"); // v2
 
         const appMeta = {
           name: "Fractional",
           description: "RWA & NFTs on Hedera",
           icon: (typeof window !== "undefined" ? window.location.origin : "") + "/logo.svg",
         };
+        const network = (process.env.NEXT_PUBLIC_HEDERA_NETWORK as string) || "testnet";
 
-        // Use a browser-visible env for network; fall back to server or testnet
-        const network =
-          (process.env.NEXT_PUBLIC_HEDERA_NETWORK as string) ||
-          (process.env.HEDERA_NETWORK as string) ||
-          "testnet";
+        setStatus("loading:init");
+        // v2: new HashConnect(debug)
+        const h = new (HashConnect as any)(true);
 
-        const h = new HashConnect(network, appMeta, true);
-        // init(appMeta, network, debug)
-        await h.init(appMeta, network, true);
-        if (!mounted.current) return;
+        // detect extension + pairing events
+        h.foundExtensionEvent?.on((walletMeta: any) => {
+          log("foundExtensionEvent", walletMeta);
+          setStatus("extension:found");
+        });
 
-        setHc(h);
-        setStatus("ready");
+        h.pairingEvent.on((data: any) => {
+          log("pairingEvent", data);
+          setPairing(data);
+          try { localStorage.setItem("hashconnectData", JSON.stringify(data)); } catch { }
+          setStatus(`paired:${data?.accountIds?.[0] || ""}`);
+        });
 
-        // restore prior session if present
-        const saved = typeof localStorage !== "undefined" ? localStorage.getItem("hashconnectData") : null;
+        h.connectionStatusChangeEvent?.on((s: any) => log("connectionStatus", s));
+
+        // v2 init signature: init(appMeta, network, debug)
+        await h.init(appMeta, network as any, true);
+
+        // Restore old pairing (if present)
+        const saved = localStorage.getItem("hashconnectData");
         if (saved) {
           try {
             const parsed = JSON.parse(saved);
             setPairing(parsed);
             setStatus(`paired:${parsed?.accountIds?.[0] || "unknown"}`);
+            log("restored prior pairing", parsed);
           } catch { }
         }
 
-        // event logs (very helpful)
-        h.foundExtensionEvent.on((walletMeta: any) => {
-          console.log("[HashConnect] foundExtensionEvent", walletMeta);
-          setStatus("extension:found");
-        });
-        h.pairingEvent.on((data: any) => {
-          console.log("[HashConnect] pairingEvent", data);
-          setPairing(data);
-          if (typeof localStorage !== "undefined") localStorage.setItem("hashconnectData", JSON.stringify(data));
-          setStatus(`paired:${data?.accountIds?.[0] || ""}`);
-        });
-        h.connectionStatusChangeEvent.on((s: any) => {
-          console.log("[HashConnect] connectionStatus", s);
-        });
+        // Ask the extension to announce itself
+        try {
+          await h.findLocalWallets?.();
+        } catch (e) {
+          log("findLocalWallets error (ok on some versions)", e);
+        }
+
+        setHc(h);
+        setStatus("ready");
+        log("hashconnect v2 ready (extension-only)");
       } catch (e: any) {
-        console.error("[HashConnect] init error", e);
+        console.error("[Wallet(ext-only)] init error", e);
         setStatus(`error:${e?.message || e}`);
       }
     })();
+
     return () => { mounted.current = false; };
   }, []);
 
   const connect = async () => {
     if (!hc) { setStatus("error:not_initialized"); return; }
     setStatus("connecting");
-
     try {
-      // First try to detect/open the local extension pairing
-      const opened = await hc.connectToLocalWallet(); // hashpack extension
-      // Some versions return void; rely on events instead:
+      // This triggers the HashPack browser extension pairing popup
+      await hc.connectToLocalWallet?.();
       setStatus("connecting:requested");
-
-      // Fallback after ~1s if no extension is detected
-      setTimeout(() => {
-        if (!pairing && mounted.current) {
-          // Open download page as a nudge — user can install and retry
-          window.open("https://www.hashpack.app/download", "_blank");
-          setStatus("extension:not_found");
-        }
-      }, 1000);
     } catch (e: any) {
-      console.error("[HashConnect] connect error", e);
+      console.error("[Wallet(ext-only)] connect error", e);
       setStatus(`error:${e?.message || e}`);
     }
   };
 
   const disconnect = () => {
     try {
-      if (typeof localStorage !== "undefined") localStorage.removeItem("hashconnectData");
+      localStorage.removeItem("hashconnectData");
       setPairing(null);
       setStatus("disconnected");
     } catch (e) {
@@ -121,6 +128,7 @@ export default function HashConnectProvider({ children }: { children: React.Reac
     }
   };
 
+  // base64 -> extension sign+submit (same call shape on v2)
   const signAndSubmit = async (base64Tx: string) => {
     if (!hc || !accountId || !pairing?.topic) throw new Error("Wallet not connected");
     setStatus("tx:signing");
@@ -133,6 +141,10 @@ export default function HashConnectProvider({ children }: { children: React.Reac
     return { txId: res.receipt?.transactionId || "" };
   };
 
-  const value = useMemo(() => ({ accountId, connect, disconnect, signAndSubmit, status }), [accountId, hc, pairing, status]);
+  const value = useMemo(
+    () => ({ accountId, connect, disconnect, signAndSubmit, status }),
+    [accountId, hc, pairing, status]
+  );
+
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
 }
