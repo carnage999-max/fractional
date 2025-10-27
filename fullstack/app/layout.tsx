@@ -3,6 +3,7 @@ import "./globals.css";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import dynamic from "next/dynamic";
+import ToastProvider from "@/components/ui/ToastProvider";
 
 const HWCProvider = dynamic(() => import("@/components/wallet/HWCProvider"), { ssr: false });
 
@@ -19,8 +20,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <div className="fixed inset-0 -z-10 bg-[radial-gradient(60%_60%_at_50%_10%,rgba(34,197,94,0.15),transparent_60%)]" />
         {/* Wrap the entire app including Navbar so the provider actually mounts on the client */}
         <HWCProvider>
-          <Navbar />
-          {children}
+          <ToastProvider>
+            <Navbar />
+            {children}
+          </ToastProvider>
         </HWCProvider>
         <Footer />
       </body>

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { dbService } from "@/lib/dbService";
+import { getAssetById } from "@/lib/assetRegistry";
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const asset = await dbService.getAssetById(params.id);
+  const asset = await getAssetById(params.id);
     
     if (!asset) {
       return NextResponse.json({ error: "Asset not found" }, { status: 404 });

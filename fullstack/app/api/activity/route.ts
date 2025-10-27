@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { dbService } from "@/lib/dbService";
+import { listActivities } from "@/lib/assetRegistry";
 
 export async function GET(req: NextRequest) {
   try {
@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "assetId is required" }, { status: 400 });
     }
     
-    const activities = await dbService.getActivities(assetId);
+  const activities = await listActivities(assetId);
     return NextResponse.json(activities);
   } catch (error) {
     console.error("Error fetching activities:", error);

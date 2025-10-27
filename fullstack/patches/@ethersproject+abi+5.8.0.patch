@@ -1,0 +1,97 @@
+diff --git a/node_modules/@ethersproject/abi/lib/abi-coder.d.ts b/node_modules/@ethersproject/abi/lib/abi-coder.d.ts
+index 7bfd727..9acddea 100644
+--- a/node_modules/@ethersproject/abi/lib/abi-coder.d.ts
++++ b/node_modules/@ethersproject/abi/lib/abi-coder.d.ts
+@@ -1,6 +1,6 @@
+ import { BytesLike } from "@ethersproject/bytes";
+-import { Coder, Reader, Result, Writer } from "./coders/abstract-coder";
+-import { ParamType } from "./fragments";
++import { Coder, Reader, Result, Writer } from "@ethersproject/abi/src.ts/coders/abstract-coder";
++import { ParamType } from "@ethersproject/abi/src.ts/fragments";
+ export declare type CoerceFunc = (type: string, value: any) => any;
+ export declare class AbiCoder {
+     readonly coerceFunc: CoerceFunc;
+diff --git a/node_modules/@ethersproject/abi/lib/index.d.ts b/node_modules/@ethersproject/abi/lib/index.d.ts
+index cbdc15d..97c2684 100644
+--- a/node_modules/@ethersproject/abi/lib/index.d.ts
++++ b/node_modules/@ethersproject/abi/lib/index.d.ts
+@@ -1,5 +1,5 @@
+-import { ConstructorFragment, ErrorFragment, EventFragment, FormatTypes, Fragment, FunctionFragment, JsonFragment, JsonFragmentType, ParamType } from "./fragments";
+-import { AbiCoder, CoerceFunc, defaultAbiCoder } from "./abi-coder";
+-import { checkResultErrors, Indexed, Interface, LogDescription, Result, TransactionDescription } from "./interface";
++import { ConstructorFragment, ErrorFragment, EventFragment, FormatTypes, Fragment, FunctionFragment, JsonFragment, JsonFragmentType, ParamType } from "@ethersproject/abi/src.ts/fragments";
++import { AbiCoder, CoerceFunc, defaultAbiCoder } from "@ethersproject/abi/src.ts/abi-coder";
++import { checkResultErrors, Indexed, Interface, LogDescription, Result, TransactionDescription } from "@ethersproject/abi/src.ts/interface";
+ export { ConstructorFragment, ErrorFragment, EventFragment, Fragment, FunctionFragment, ParamType, FormatTypes, AbiCoder, defaultAbiCoder, Interface, Indexed, CoerceFunc, JsonFragment, JsonFragmentType, Result, checkResultErrors, LogDescription, TransactionDescription };
+ //# sourceMappingURL=index.d.ts.map
+\ No newline at end of file
+diff --git a/node_modules/@ethersproject/abi/lib/interface.d.ts b/node_modules/@ethersproject/abi/lib/interface.d.ts
+index c50269e..d8c895c 100644
+--- a/node_modules/@ethersproject/abi/lib/interface.d.ts
++++ b/node_modules/@ethersproject/abi/lib/interface.d.ts
+@@ -1,9 +1,9 @@
+ import { BigNumber, BigNumberish } from "@ethersproject/bignumber";
+ import { BytesLike } from "@ethersproject/bytes";
+ import { Description } from "@ethersproject/properties";
+-import { AbiCoder } from "./abi-coder";
+-import { checkResultErrors, Result } from "./coders/abstract-coder";
+-import { ConstructorFragment, ErrorFragment, EventFragment, Fragment, FunctionFragment, JsonFragment, ParamType } from "./fragments";
++import { AbiCoder } from "@ethersproject/abi/src.ts/abi-coder";
++import { checkResultErrors, Result } from "@ethersproject/abi/src.ts/coders/abstract-coder";
++import { ConstructorFragment, ErrorFragment, EventFragment, Fragment, FunctionFragment, JsonFragment, ParamType } from "@ethersproject/abi/src.ts/fragments";
+ export { checkResultErrors, Result };
+ export declare class LogDescription extends Description<LogDescription> {
+     readonly eventFragment: EventFragment;
+diff --git a/node_modules/@ethersproject/abi/src.ts/abi-coder.ts b/node_modules/@ethersproject/abi/src.ts/abi-coder.ts
+index 9056ae9..83f7361 100644
+--- a/node_modules/@ethersproject/abi/src.ts/abi-coder.ts
++++ b/node_modules/@ethersproject/abi/src.ts/abi-coder.ts
+@@ -30,7 +30,7 @@ const paramTypeNumber = new RegExp(/^(u?int)([0-9]*)$/);
+ export type CoerceFunc = (type: string, value: any) => any;
+ 
+ export class AbiCoder {
+-    readonly coerceFunc: CoerceFunc;
++    readonly coerceFunc: CoerceFunc | null;
+ 
+     constructor(coerceFunc?: CoerceFunc) {
+         defineReadOnly(this, "coerceFunc", coerceFunc || null);
+@@ -83,7 +83,7 @@ export class AbiCoder {
+     _getWordSize(): number { return 32; }
+ 
+     _getReader(data: Uint8Array, allowLoose?: boolean): Reader {
+-        return new Reader(data, this._getWordSize(), this.coerceFunc, allowLoose);
++    return new Reader(data, this._getWordSize(), this.coerceFunc ?? undefined, allowLoose);
+     }
+ 
+     _getWriter(): Writer {
+diff --git a/node_modules/@ethersproject/abi/src.ts/coders/abstract-coder.ts b/node_modules/@ethersproject/abi/src.ts/coders/abstract-coder.ts
+index df6213c..ae2b617 100644
+--- a/node_modules/@ethersproject/abi/src.ts/coders/abstract-coder.ts
++++ b/node_modules/@ethersproject/abi/src.ts/coders/abstract-coder.ts
+@@ -82,10 +82,11 @@ export class Writer {
+     _padding: Uint8Array;
+ 
+     constructor(wordSize?: number) {
+-        defineReadOnly(this, "wordSize", wordSize || 32);
++    const resolvedWordSize = wordSize ?? 32;
++    defineReadOnly(this, "wordSize", resolvedWordSize);
+         this._data = [ ];
+         this._dataLength = 0;
+-        this._padding = new Uint8Array(wordSize);
++    this._padding = new Uint8Array(resolvedWordSize);
+     }
+ 
+     get data(): string {
+@@ -144,10 +145,10 @@ export class Writer {
+ 
+ export class Reader {
+     readonly wordSize: number;
+-    readonly allowLoose: boolean;
++    readonly allowLoose: boolean | undefined;
+ 
+     readonly _data: Uint8Array;
+-    readonly _coerceFunc: CoerceFunc;
++    readonly _coerceFunc: CoerceFunc | undefined;
+ 
+     _offset: number;
+ 

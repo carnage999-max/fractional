@@ -1,5 +1,5 @@
 "use client";
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from "react";
 
 /** Extension-only (HashConnect v2) context */
 type WalletContextType = {
@@ -105,7 +105,7 @@ export default function HashConnectProvider({ children }: { children: React.Reac
     return () => { mounted.current = false; };
   }, []);
 
-  const connect = async () => {
+  const connect = useCallback(async () => {
     if (!hc) { setStatus("error:not_initialized"); return; }
     setStatus("connecting");
     try {
@@ -116,9 +116,9 @@ export default function HashConnectProvider({ children }: { children: React.Reac
       console.error("[Wallet(ext-only)] connect error", e);
       setStatus(`error:${e?.message || e}`);
     }
-  };
+  }, [hc]);
 
-  const disconnect = () => {
+  const disconnect = useCallback(() => {
     try {
       localStorage.removeItem("hashconnectData");
       setPairing(null);
@@ -126,10 +126,10 @@ export default function HashConnectProvider({ children }: { children: React.Reac
     } catch (e) {
       console.warn("disconnect failed", e);
     }
-  };
+  }, []);
 
   // base64 -> extension sign+submit (same call shape on v2)
-  const signAndSubmit = async (base64Tx: string) => {
+  const signAndSubmit = useCallback(async (base64Tx: string) => {
     if (!hc || !accountId || !pairing?.topic) throw new Error("Wallet not connected");
     setStatus("tx:signing");
     const res = await hc.sendTransaction(pairing.topic, {
@@ -139,11 +139,11 @@ export default function HashConnectProvider({ children }: { children: React.Reac
     if (!res?.receipt) throw new Error("No receipt returned");
     setStatus("tx:submitted");
     return { txId: res.receipt?.transactionId || "" };
-  };
+  }, [accountId, hc, pairing]);
 
   const value = useMemo(
     () => ({ accountId, connect, disconnect, signAndSubmit, status }),
-    [accountId, hc, pairing, status]
+    [accountId, connect, disconnect, signAndSubmit, status]
   );
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;

@@ -8,6 +8,8 @@
     ],
     "skipLibCheck": true,
     "strict": true,
+  "strictPropertyInitialization": false,
+  "useUnknownInCatchVariables": false,
     "noEmit": true,
     "esModuleInterop": true,
     "module": "esnext",
@@ -22,6 +24,12 @@
       ],
       "@/lib/*": [
         "lib/*"
+      ],
+      "@ethersproject/abi/src.ts": [
+        "types/@ethersproject/abi/src.ts/abi-coder.d.ts"
+      ],
+      "@ethersproject/abi/src.ts/*": [
+        "types/@ethersproject/abi/src.ts/*"
       ]
     },
     "allowJs": true,

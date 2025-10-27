@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useMemo, useState, useRef } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useState, useRef, useCallback } from "react";
 
 type Ctx = {
     accountId: string | null;
@@ -225,8 +225,9 @@ export default function HWCProvider({ children }: { children: React.ReactNode })
         return () => { 
             mounted.current = false; 
         };
-    }, []);    // Connect via HashPack extension
-    const connectExtension = async () => {
+    }, []);
+
+    const connectExtension = useCallback(async () => {
         console.log("[HWC] connectExtension called, hashConnect:", !!hashConnect);
         if (!hashConnect) {
             console.error("[HWC] HashConnect not initialized");
@@ -235,42 +236,30 @@ export default function HWCProvider({ children }: { children: React.ReactNode })
         }
         setStatus("connecting:extension");
         try {
-            console.log("[HWC] Attempting to connect to local wallet...");
-            await hashConnect.connectToLocalWallet();
-            setStatus("connecting:extension_requested");
-            console.log("[HWC] Extension connection requested");
+            console.log("[HWC] Attempting to connect via HashPack extension...");
+            if (typeof hashConnect.openPairingModal === "function") {
+                await hashConnect.openPairingModal();
+                setStatus("connecting:extension_modal_open");
+                console.log("[HWC] Pairing modal opened for extension flow");
+            } else {
+                throw new Error("HashConnect.openPairingModal is not available");
+            }
         } catch (e: any) {
             console.error("[HWC] Extension connect error", e);
             setStatus(`error:${e?.message || e}`);
         }
-    };
+    }, [hashConnect]);
 
     // Connect via WalletConnect modal (for mobile wallets)
-    const connect = async () => {
+    const connect = useCallback(async () => {
         console.log("[HWC] connect called, hashConnect:", !!hashConnect, "status:", status);
-        
-        // Wait for HashConnect to be ready
-        if (!hashConnect || status === "loading" || status === "init") {
-            console.log("[HWC] Waiting for HashConnect to initialize...");
-            setStatus("connecting:waiting_for_init");
-            
-            // Wait up to 10 seconds for initialization
-            const maxWait = 10000;
-            const checkInterval = 100;
-            let waited = 0;
-            
-            while ((!hashConnect || status === "loading" || status === "init") && waited < maxWait) {
-                await new Promise(resolve => setTimeout(resolve, checkInterval));
-                waited += checkInterval;
-            }
-            
-            if (!hashConnect) {
-                console.error("[HWC] HashConnect initialization timeout");
-                setStatus("error:initialization_timeout");
-                return;
-            }
+
+        if (!hashConnect) {
+            console.warn("[HWC] HashConnect not ready when connect called");
+            setStatus("error:not_initialized");
+            return;
         }
-        
+
         // Check if WalletConnect is configured
         const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
         console.log("[HWC] Checking Project ID for WalletConnect:", projectId);
@@ -282,11 +271,14 @@ export default function HWCProvider({ children }: { children: React.ReactNode })
         
         setStatus("connecting:modal");
         try {
-            console.log("[HWC] Attempting to open WalletConnect modal...");
-            // This opens the WalletConnect modal
-            await hashConnect.openModal();
+            console.log("[HWC] Attempting to open WalletConnect pairing modal...");
+            if (typeof hashConnect.openPairingModal !== "function") {
+                throw new Error("HashConnect.openPairingModal is not available");
+            }
+
+            await hashConnect.openPairingModal();
             setStatus("connecting:modal_opened");
-            console.log("[HWC] WalletConnect modal opened successfully");
+            console.log("[HWC] WalletConnect pairing modal opened successfully");
         } catch (e: any) {
             console.error("[HWC] Modal connect error", e);
             console.error("[HWC] Error details:", {
@@ -307,9 +299,9 @@ export default function HWCProvider({ children }: { children: React.ReactNode })
                 setStatus(`error:${e?.message || e}`);
             }
         }
-    };
+    }, [hashConnect, status]);
 
-    const disconnect = async () => {
+    const disconnect = useCallback(async () => {
         try {
             if (pairing && hashConnect) {
                 try {
@@ -333,9 +325,9 @@ export default function HWCProvider({ children }: { children: React.ReactNode })
             console.error("[HWC] Disconnect error", e);
             setStatus("disconnected");
         }
-    };
+    }, [hashConnect, pairing]);
 
-    const signAndExecute = async (txBase64: string) => {
+    const signAndExecute = useCallback(async (txBase64: string) => {
         if (!hashConnect || !accountId || !pairing?.topic) {
             throw new Error("Wallet not connected");
         }
@@ -357,7 +349,7 @@ export default function HWCProvider({ children }: { children: React.ReactNode })
             setStatus("tx:error");
             throw new Error(`Transaction failed: ${e?.message || e}`);
         }
-    };
+    }, [accountId, hashConnect, pairing]);
 
     const value = useMemo(() => ({ 
         accountId, 
@@ -367,7 +359,7 @@ export default function HWCProvider({ children }: { children: React.ReactNode })
         signAndExecute, 
         status, 
         isExtensionAvailable 
-    }), [accountId, hashConnect, pairing, status, isExtensionAvailable]);
+    }), [accountId, connect, connectExtension, disconnect, signAndExecute, status, isExtensionAvailable]);
 
     return <WalletCtx.Provider value={value}>{children}</WalletCtx.Provider>;
 }
