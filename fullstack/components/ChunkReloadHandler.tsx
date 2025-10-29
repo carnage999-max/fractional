@@ -77,7 +77,7 @@ export default function ChunkReloadHandler() {
       {info.details && <div style={{marginBottom:8}}>Details: {info.details}</div>}
       <div style={{display:'flex',gap:8}}>
         {info.url && <button onClick={() => { fetch(info.url!, {cache:'no-store', credentials:'same-origin'}).then(r=>r.text().then(t=>{console.log('fetched length', t.length); alert('fetch OK, length='+t.length)})).catch(e=>{alert('fetch failed: '+e)}) }} style={{background:'#065f46',color:'#fff',border:'none',padding:'6px 10px',borderRadius:6}}>Retry fetch</button>}
-        <button onClick={() => { try { sessionStorage.setItem('_chunk_reload','1') } catch(_){}; if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) { navigator.serviceWorker.getRegistrations().then(regs=>regs.forEach(r=>r.unregister())).finally(()=>window.location.reload()) } else { window.location.reload() } }} style={{background:'#0ea5e9',color:'#000',Border:'none',padding:'6px 10px',borderRadius:6}}>Reload (unregister SW)</button>
+        <button onClick={() => { try { sessionStorage.setItem('_chunk_reload','1') } catch(_){}; if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) { navigator.serviceWorker.getRegistrations().then(regs=>regs.forEach(r=>r.unregister())).finally(()=>window.location.reload()) } else { window.location.reload() } }} style={{background:'#0ea5e9',color:'#000',border:'none',padding:'6px 10px',borderRadius:6}}>Reload (unregister SW)</button>
       </div>
     </div>
   );

@@ -1,6 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
 	reactStrictMode: true,
+	// Generate unique build ID for each build to bust CloudFront cache
+	generateBuildId: async () => {
+		return `build-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+	},
 	typescript: {
 		ignoreBuildErrors: true,
 	},
@@ -12,12 +16,21 @@ const nextConfig = {
 			{ protocol: "https", hostname: "*" },
 		],
 	},
-	webpack: (config) => {
+	webpack: (config, { isServer }) => {
 		config.ignoreWarnings = config.ignoreWarnings || [];
 		config.ignoreWarnings.push({
 			message: /Critical dependency: require function is used/,
 			module: /@hashgraph\/hedera-wallet-connect/,
 		});
+		
+		// Enable runtime chunk for better chunk loading resilience
+		if (!isServer) {
+			config.optimization = {
+				...config.optimization,
+				runtimeChunk: 'single',
+			};
+		}
+		
 		return config;
 	},
 };
