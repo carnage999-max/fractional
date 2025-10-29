@@ -10,6 +10,8 @@ applications:
             - 'echo "Listing repo root contents:" && ls -la || true'
             - 'echo "Installing dependencies in app root (using lockfile here)..."'
             - 'npm ci || (echo "npm ci failed, falling back to npm install" && npm install)'
+            # compile smart-contracts in CI if artifacts aren't present (run from app root -> go up one level)
+            - 'if [ ! -d "../smart contract/artifacts" ] && [ ! -d "../smart-contract/artifacts" ]; then echo "No artifacts found in parent - compiling smart contracts in CI..." && cd .. && cd "smart contract" && npm ci && npm run compile && cd ../fullstack || true; else echo "Artifacts already present in parent, skipping compile."; fi'
             # ensure target dir exists inside the app root for copied artifacts
             - mkdir -p "fullstack/smart-contract/artifacts"
             # try copying artifacts from either possible locations in the repo root
