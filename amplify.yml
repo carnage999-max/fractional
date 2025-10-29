@@ -6,10 +6,10 @@ applications:
         preBuild:
           commands:
             # run install inside the app root where the package-lock.json lives
-            - echo "PWD: $(pwd)"
-            - echo "Listing repo root contents:" && ls -la || true
-            - echo "Installing dependencies in fullstack/ (using lockfile there)..."
-            - cd fullstack && npm ci || (echo "npm ci failed, falling back to npm install" && npm install)
+            - 'echo "PWD: $(pwd)"'
+            - 'echo "Listing repo root contents:" && ls -la || true'
+            - 'echo "Installing dependencies in fullstack/ (using lockfile there)..."'
+            - 'cd fullstack && npm ci || (echo "npm ci failed, falling back to npm install" && npm install)'
             # ensure target dir exists inside the app root for copied artifacts
             - mkdir -p "fullstack/smart-contract/artifacts"
             # try copying artifacts from either possible locations in the repo root
