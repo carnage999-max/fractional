@@ -33,6 +33,8 @@ applications:
         build:
           commands:
             - npm run build
+            # Debug: list built client chunks so deployed artifact includes expected filenames
+            - echo "Listing .next/static/chunks after build:" && ls -la .next/static/chunks || true
       artifacts:
         # baseDirectory is relative to the configured appRoot (fullstack),
         # so use .next instead of fullstack/.next
