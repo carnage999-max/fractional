@@ -1,9 +1,10 @@
  "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/ToastProvider";
+import { useWallet } from "@/components/wallet/HWCProvider";
 
 type CreateAssetResult = {
   asset: { id: string; name: string };
@@ -18,14 +19,29 @@ type CreateAssetResult = {
 export default function CreatePage() {
   const router = useRouter();
   const toast = useToast();
+  const { accountId, status, connect, connectExtension, isExtensionAvailable } = useWallet();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<CreateAssetResult | null>(null);
+
+  const connectWalletLabel = useMemo(() => {
+    if (!status) return "Connect Wallet";
+    if (status.startsWith("error:")) return "Retry Wallet";
+    return status.replace(/^[a-z]+:/i, (prefix) => `${prefix.replace(":", " ")}:`).trim();
+  }, [status]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
     setResult(null);
+
+    if (!accountId) {
+      const message = "Connect your wallet before minting.";
+      setError(message);
+      toast.error(message);
+      return;
+    }
+
     setLoading(true);
 
     const form = event.currentTarget;
@@ -38,6 +54,7 @@ export default function CreatePage() {
       pricePerShare: String(formData.get("pricePerShare") ?? "").trim(),
       category: String(formData.get("category") ?? "RWA").trim(),
       image: String(formData.get("image") ?? "").trim(),
+      creator: accountId,
     };
 
     try {
@@ -72,6 +89,22 @@ export default function CreatePage() {
         <p className="text-sm text-foreground/60">
           Uploads metadata to IPFS + HFS, mints HTS tokens, and deploys the distributor contract.
         </p>
+        {!accountId && (
+          <div className="mt-2 rounded-xl border border-border/70 bg-muted/40 p-3 text-xs text-foreground/80">
+            <p className="font-medium">Wallet required</p>
+            <p className="mt-1">Connect a Hedera wallet to mint new assets.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {isExtensionAvailable && (
+                <Button type="button" variant="outline" onClick={connectExtension}>
+                  Use HashPack Extension
+                </Button>
+              )}
+              <Button type="button" variant={isExtensionAvailable ? "ghost" : "outline"} onClick={connect}>
+                {connectWalletLabel || "Connect Wallet"}
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {error && <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
@@ -142,8 +175,8 @@ export default function CreatePage() {
             />
           </div>
         </div>
-        <Button type="submit" disabled={loading}>
-          {loading ? "Minting..." : "Mint & Create"}
+        <Button type="submit" disabled={loading || !accountId}>
+          {loading ? "Minting..." : accountId ? "Mint & Create" : "Connect Wallet First"}
         </Button>
       </form>
 

@@ -1,40 +1,35 @@
+// hardhat.config.js
 require("@nomicfoundation/hardhat-toolbox");
 require("dotenv").config();
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
   solidity: {
-    version: "0.8.24",
-    settings: {
-      optimizer: {
-        enabled: true,
-        runs: 200,
+    compilers: [
+      {
+        version: "0.8.13",
+        settings: {
+          optimizer: { enabled: false, runs: 200 },
+          evmVersion: "istanbul",
+          metadata: { bytecodeHash: "none" },
+        },
       },
-      evmVersion: "cancun",
-    },
+    ],
   },
   networks: {
-    hardhat: {
-      chainId: 1337,
+    local: {
+      url: process.env.HEDERA_LOCAL_RPC_URL || "http://localhost:7546", // Example for local node
+      accounts: [process.env.PRIVATE_KEY],
     },
-    localhost: {
-      url: "http://127.0.0.1:8545",
+    testnet: {
+      url: process.env.HEDERA_TESTNET_URL || "https://testnet.hashio.io/api", // Example for testnet
+      accounts: [process.env.PRIVATE_KEY],
     },
-  },
-  gasReporter: {
-    enabled: process.env.REPORT_GAS ? true : false,
-    currency: "USD",
-    coinmarketcap: process.env.COINMARKETCAP_API_KEY,
-  },
-  etherscan: {
-    apiKey: {
-      testnet: "none",
+    mainnet: {
+      url: process.env.HEDERA_MAINNET_URL || "https://mainnet.hashio.io/api", // Example for mainnet
+      accounts: [process.env.PRIVATE_KEY],
     },
+    // Add other networks here as needed
   },
-  paths: {
-    sources: "./contracts",
-    tests: "./test",
-    cache: "./cache",
-    artifacts: "./artifacts",
-  },
+  // You can add other configurations here, such as compiler settings or plugins [5]
 };

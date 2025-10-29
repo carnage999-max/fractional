@@ -1,0 +1,39 @@
+Hedera Contract Deploy Failure – Investigation Summary
+======================================================
+
+1. Symptom
+   - `/api/assets` POST fails while deploying the dividend distributor.
+   - Mirror node for transaction `0.0.7093639-1761645056-035870054` (and every retry) shows `ERROR_DECODING_BYTESTRING` with **gas_used = 0**, meaning Hedera rejected the transaction before executing the init code.
+
+2. Backend Flow (current code)
+   - **fullstack/lib/hedera.ts**
+     * `deployDividendDistributor` now uploads bytecode via `FileCreateTransaction` + `FileAppendTransaction`.
+     * Deployment uses `ContractCreateTransaction.setBytecodeFileId(...)` (no inline bytecode).
+   - **fullstack/app/api/assets/route.ts**
+     * Calls `deployDividendDistributor` after minting the NFT/FT pair.
+   - Artifact source: `smart contract/artifacts/contracts/DividendDistributor.sol/DividendDistributor.json`
+
+3. Reproduction & Validation Steps
+   1. Ran `scripts/debug-contract.js` with the same NFT / FT IDs.  
+      Result: File create succeeded (`0.0.7149212`) but `ContractCreateTransaction` still hit `ERROR_DECODING_BYTESTRING`.
+   2. Manually scripted a minimal test (`TestHello.sol`) and repeated the HFS upload + contract create.  
+      Result: identical network error (`ERROR_DECODING_BYTESTRING`) even for tiny bytecode.
+   3. Mirror-node queries for the failing txs (`/contracts/results/{txId}`) confirm zero gas usage and the same decode error.
+   4. Other transactions (token create/mint, file create) succeed with the same operator credentials, so only `CONTRACTCREATEINSTANCE` is failing.
+
+4. Conclusion
+   - The app is already using the required “long-form” deployment (HFS upload + `setBytecodeFileId`).
+   - Hedera testnet is rejecting every contract-create submitted by operator `0.0.7093639`, including trivial bytecode. This behaviour is outside our code changes and indicates a network-side issue.
+
+5. Recommended Next Actions
+   1. Escalate to Hedera support (or HashPack/Hashio provider). Provide failing tx IDs such as:
+      - `0.0.7093639@1761645468.178044707`
+      - `0.0.7093639@1761645826.917200613` (minimal test contract)
+   2. Share the HashScan links returned by `deployDividendDistributor` (HFS file upload + contract create) so support can inspect the payloads.
+   3. Once Hedera resolves the decode issue, rerun `/api/assets` without further code changes.
+
+6. Files of Interest
+   - **fullstack/lib/hedera.ts** (deployment helper)
+   - **fullstack/app/api/assets/route.ts** (API entry point)
+   - **fullstack/scripts/debug-contract.js** (manual reproduction)
+   - **smart contract/artifacts/contracts/DividendDistributor.sol/DividendDistributor.json** (bytecode source)

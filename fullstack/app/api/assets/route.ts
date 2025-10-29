@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { createAssetRecord, listAssets } from "@/lib/assetRegistry";
-import { associateTokenToContract, createAssetTokens, deployDividendDistributor, storeJsonInHfs, toHashscanLink } from "@/lib/hedera";
+import {
+  associateTokenToContract,
+  createAssetTokens,
+  deployDividendDistributor,
+  storeJsonInHfs,
+  toHashscanLink,
+  transferFtToAccount,
+  transferNftToAccount,
+} from "@/lib/hedera";
 import { uploadMetadataToIpfs } from "@/lib/ipfs";
 
 type AssetPayload = {
@@ -28,7 +36,7 @@ async function parseAssetPayload(req: NextRequest): Promise<AssetPayload> {
       category: String(json.category ?? "RWA"),
       image: String(json.image ?? ""),
       apr: json.apr ? String(json.apr) : undefined,
-      creator: json.creator ? String(json.creator) : undefined,
+  creator: json.creator ? String(json.creator).trim() : undefined,
     };
   }
 
@@ -41,7 +49,7 @@ async function parseAssetPayload(req: NextRequest): Promise<AssetPayload> {
     category: String(form.get("category") ?? "RWA"),
     image: String(form.get("image") ?? ""),
     apr: form.get("apr") ? String(form.get("apr")) : undefined,
-    creator: form.get("creator") ? String(form.get("creator")) : undefined,
+    creator: form.get("creator") ? String(form.get("creator")).trim() : undefined,
   };
 }
 
@@ -52,6 +60,7 @@ function validatePayload(payload: AssetPayload) {
     throw new Error("totalShares must be a positive number");
   }
   if (!payload.pricePerShare) throw new Error("pricePerShare is required");
+  if (!payload.creator) throw new Error("creator account is required");
 }
 
 function generateAssetId() {
@@ -85,8 +94,8 @@ export async function POST(req: NextRequest) {
 
     const assetId = generateAssetId();
     const createdAtIso = new Date().toISOString();
-    const operatorAccount = process.env.OPERATOR_ID || "0.0.0";
-    const creatorAccount = payload.creator || operatorAccount;
+  const operatorAccount = process.env.OPERATOR_ID || "0.0.0";
+  const creatorAccount = (payload.creator || operatorAccount).trim();
 
     const metadata = {
       name: payload.name,
@@ -123,7 +132,44 @@ export async function POST(req: NextRequest) {
       ownerAccountId: creatorAccount,
     });
 
-    const association = await associateTokenToContract(deployment.contractId, tokens.fraction.tokenId);
+    let association: { transactionId?: string; link?: string; error?: string } | null = null;
+    let nftTransfer: { transactionId: string; link: string; status: string } | null = null;
+    let nftTransferError: string | null = null;
+    let ftTransfer: { transactionId: string; link: string; status: string } | null = null;
+    let ftTransferError: string | null = null;
+    try {
+      association = await associateTokenToContract(deployment.contractId, tokens.fraction.tokenId);
+    } catch (err: any) {
+      console.warn("Token association to contract failed:", err?.message || err);
+      // Common cause: contract alias can't sign an association. Continue and surface a helpful message.
+      association = { error: String(err?.message || err) };
+    }
+
+    if (tokens.nft.serials.length > 0) {
+      try {
+        nftTransfer = await transferNftToAccount({
+          tokenId: tokens.nft.tokenId,
+          serialNumber: tokens.nft.serials[0],
+          toAccountId: creatorAccount,
+          memo: `Asset ${assetId} ownership`,
+        });
+      } catch (err: any) {
+        nftTransferError = err?.message || String(err);
+        console.error("Failed to transfer NFT to creator:", nftTransferError);
+      }
+    }
+
+    try {
+      ftTransfer = await transferFtToAccount({
+        tokenId: tokens.fraction.tokenId,
+        amount: payload.totalShares,
+        toAccountId: creatorAccount,
+        memo: `Asset ${assetId} supply transfer`,
+      });
+    } catch (err: any) {
+      ftTransferError = err?.message || String(err);
+      console.error("Failed to transfer fraction supply to creator:", ftTransferError);
+    }
 
     const newAsset = await createAssetRecord({
       id: assetId,
@@ -134,7 +180,7 @@ export async function POST(req: NextRequest) {
       nftTokenId: tokens.nft.tokenId,
       fractionTokenId: tokens.fraction.tokenId,
       distributor: deployment.contractId,
-      treasuryAccountId: operatorAccount,
+      treasuryAccountId: ftTransferError ? operatorAccount : creatorAccount,
       metadataCid: metadataUpload.cid,
       metadataUrl: metadataUpload.url,
       metadataGatewayUrl: metadataUpload.gatewayUrl,
@@ -167,6 +213,54 @@ export async function POST(req: NextRequest) {
           txLink: deployment.deployLink,
           at: createdAtIso,
         },
+        ...(nftTransfer
+          ? [
+              {
+                type: "TRANSFER_NFT",
+                by: operatorAccount,
+                amount: "1",
+                txLink: nftTransfer.link,
+                at: createdAtIso,
+                to: creatorAccount,
+              } as const,
+            ]
+          : nftTransferError
+          ? [
+              {
+                type: "TRANSFER_NFT_FAILED",
+                by: operatorAccount,
+                amount: "1",
+                txLink: "",
+                at: createdAtIso,
+                to: creatorAccount,
+                error: nftTransferError,
+              } as const,
+            ]
+          : []),
+        ...(ftTransfer
+          ? [
+              {
+                type: "TRANSFER_FT",
+                by: operatorAccount,
+                amount: String(payload.totalShares),
+                txLink: ftTransfer.link,
+                at: createdAtIso,
+                to: creatorAccount,
+              } as const,
+            ]
+          : ftTransferError
+          ? [
+              {
+                type: "TRANSFER_FT_FAILED",
+                by: operatorAccount,
+                amount: String(payload.totalShares),
+                txLink: "",
+                at: createdAtIso,
+                to: creatorAccount,
+                error: ftTransferError,
+              } as const,
+            ]
+          : []),
       ],
     });
 
@@ -200,8 +294,17 @@ export async function POST(req: NextRequest) {
             transactionId: deployment.transactionId,
             contractLink: deployment.contractLink,
             deployLink: deployment.deployLink,
-            associationTxId: association.transactionId,
-            associationLink: association.link,
+            associationTxId: association?.transactionId ?? null,
+            associationLink: association?.link ?? null,
+            associationError: association?.error ?? null,
+          },
+          transfers: {
+            nft: nftTransfer
+              ? { ...nftTransfer, error: null }
+              : { transactionId: null, link: null, status: null, error: nftTransferError },
+            fraction: ftTransfer
+              ? { ...ftTransfer, error: null }
+              : { transactionId: null, link: null, status: null, error: ftTransferError },
           },
         },
       },

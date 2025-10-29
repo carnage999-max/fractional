@@ -1,4 +1,4 @@
-import { overwriteJsonInHfsFile, storeJsonInHfs } from "./hedera";
+import { overwriteJsonInHfsFile, storeJsonInHfs, readHfsFileContents } from "./hedera";
 import { MIRROR, getAccountTokenBalance } from "./mirror";
 import type { ActivityEvent, Asset, AssetCategory } from "./types";
 
@@ -39,32 +39,46 @@ function normaliseSearch(value: string) {
 }
 
 async function fetchRegistryDocument(fileId: string): Promise<RegistryDocument> {
-  const res = await fetch(`${MIRROR}/files/${fileId}/contents`, { cache: "no-store" });
-  if (!res.ok) {
-    throw new Error(`Failed to read registry file ${fileId} (status ${res.status})`);
-  }
-  const raw = await res.text();
-
-  const tryParse = (input: string) => {
-    const trimmed = input.trim();
-    if (!trimmed) return emptyRegistry;
-    try {
-      return JSON.parse(trimmed);
-    } catch {
-      try {
-        const decoded = Buffer.from(trimmed, "base64").toString("utf8");
-        return JSON.parse(decoded);
-      } catch (err) {
-        throw new Error(`Failed to parse registry JSON for ${fileId}: ${(err as Error).message}`);
+  const sources: Array<() => Promise<string>> = [
+    async () => {
+      const res = await fetch(`${MIRROR}/files/${fileId}/contents`, { cache: "no-store" });
+      if (!res.ok) {
+        throw new Error(`Mirror read failed with status ${res.status}`);
       }
-    }
-  };
+      return await res.text();
+    },
+    async () => {
+      const buffer = await readHfsFileContents(fileId);
+      return buffer.toString("utf8");
+    },
+  ];
 
-  const doc = tryParse(raw);
-  if (!doc.version) {
-    return { version: REGISTRY_VERSION, assets: doc.assets ?? [] };
+  let lastError: Error | null = null;
+  for (const getSource of sources) {
+    try {
+      const raw = await getSource();
+      const trimmed = raw.trim();
+      if (!trimmed) return emptyRegistry;
+      try {
+        const doc = JSON.parse(trimmed);
+        if (!doc.version) {
+          return { version: REGISTRY_VERSION, assets: doc.assets ?? [] };
+        }
+        return doc as RegistryDocument;
+      } catch {
+        const decoded = Buffer.from(trimmed, "base64").toString("utf8");
+        const doc = JSON.parse(decoded);
+        if (!doc.version) {
+          return { version: REGISTRY_VERSION, assets: doc.assets ?? [] };
+        }
+        return doc as RegistryDocument;
+      }
+    } catch (error: any) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+    }
   }
-  return doc as RegistryDocument;
+
+  throw lastError ?? new Error(`Failed to read registry file ${fileId}`);
 }
 
 async function ensureRegistry(): Promise<{ fileId: string; doc: RegistryDocument }> {

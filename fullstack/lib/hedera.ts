@@ -1,9 +1,6 @@
-import fs from "fs/promises";
-import path from "path";
 import {
   AccountId,
   Client,
-  ContractCreateFlow,
   ContractExecuteTransaction,
   ContractFunctionParameters,
   ContractId,
@@ -23,7 +20,10 @@ import {
   Transaction,
   TransactionId,
   TransferTransaction,
+  FileInfoQuery,
+  FileContentsQuery
 } from "@hashgraph/sdk";
+import { deployDividendDistributorEthers } from "./deployWIthEthers";
 
 type HederaNetwork = "mainnet" | "testnet" | "previewnet";
 
@@ -41,8 +41,6 @@ const HASHSCAN_BASE: Record<HederaNetwork, string> = {
 
 let cachedClient: Client | null = null;
 let cachedNetwork: HederaNetwork | null = null;
-let cachedDistributorArtifact: { bytecode: string; abi: any } | null = null;
-let cachedDistributorArtifactMtimeMs: number | null = null;
 
 function resolveNetwork(): HederaNetwork {
   const fromEnv = (process.env.HEDERA_NETWORK || process.env.NEXT_PUBLIC_HEDERA_NETWORK || "testnet").toLowerCase();
@@ -134,6 +132,91 @@ export async function submitSigned(signedB64: string) {
   return { txId: res.transactionId.toString(), status: receipt.status.toString(), hashscan: toHashscanLink("transaction", res.transactionId.toString()) };
 }
 
+export async function transferFtToAccount({
+  tokenId,
+  toAccountId,
+  amount,
+  memo,
+  fromAccountId,
+}: {
+  tokenId: string;
+  toAccountId: string;
+  amount: number;
+  memo?: string;
+  fromAccountId?: string;
+}) {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error("Transfer amount must be a positive number");
+  }
+
+  const client = getClient();
+  const { operatorId } = getOperatorCredentials();
+  const sender = AccountId.fromString(fromAccountId ?? operatorId.toString());
+  const recipient = AccountId.fromString(toAccountId);
+  const tid = TokenId.fromString(tokenId);
+
+  const txId = TransactionId.generate(sender);
+  const tx = new TransferTransaction()
+    .addTokenTransfer(tid, sender, -Math.trunc(amount))
+    .addTokenTransfer(tid, recipient, Math.trunc(amount))
+    .setTransactionId(txId);
+
+  if (memo) {
+    tx.setTransactionMemo(memo.slice(0, 100));
+  }
+
+  const submit = await tx.execute(client);
+  const receipt = await submit.getReceipt(client);
+
+  return {
+    transactionId: submit.transactionId.toString(),
+    status: receipt.status.toString(),
+    link: toHashscanLink("transaction", submit.transactionId.toString()),
+  };
+}
+
+export async function transferNftToAccount({
+  tokenId,
+  serialNumber,
+  toAccountId,
+  memo,
+  fromAccountId,
+}: {
+  tokenId: string;
+  serialNumber: number;
+  toAccountId: string;
+  memo?: string;
+  fromAccountId?: string;
+}) {
+  if (!Number.isInteger(serialNumber) || serialNumber <= 0) {
+    throw new Error("serialNumber must be a positive integer");
+  }
+
+  const client = getClient();
+  const { operatorId } = getOperatorCredentials();
+  const sender = AccountId.fromString(fromAccountId ?? operatorId.toString());
+  const recipient = AccountId.fromString(toAccountId);
+  const tid = TokenId.fromString(tokenId);
+
+  const txId = TransactionId.generate(sender);
+  const tx = new TransferTransaction()
+    .addNftTransfer(tid, serialNumber, sender, recipient)
+    .setTransactionId(txId);
+
+  if (memo) {
+    tx.setTransactionMemo(memo.slice(0, 100));
+  }
+
+  const submit = await tx.execute(client);
+  const receipt = await submit.getReceipt(client);
+
+  return {
+    transactionId: submit.transactionId.toString(),
+    status: receipt.status.toString(),
+    link: toHashscanLink("transaction", submit.transactionId.toString()),
+  };
+}
+
 export const MAX_FILE_CHUNK_BYTES = 4000;
 
 export async function storeJsonInHfs(payload: unknown) {
@@ -209,12 +292,65 @@ export async function overwriteJsonInHfsFile(fileId: string, payload: unknown) {
   };
 }
 
+export async function readHfsFileContents(fileId: string): Promise<Buffer> {
+  const client = getClient();
+  const contents = await new FileContentsQuery()
+    .setFileId(FileId.fromString(fileId))
+    .execute(client);
+  return Buffer.from(contents);
+}
+
 function sanitizeSymbol(name: string, suffix = "") {
   const base = name
     .replace(/[^A-Za-z0-9]/g, "")
     .toUpperCase()
     .slice(0, 4);
   return `${base}${suffix}`.slice(0, 6) || `AST${suffix}`;
+}
+
+async function uploadContractBytecode(bytecode: Buffer) {
+  if (bytecode.length === 0) {
+    throw new Error("Contract bytecode is empty");
+  }
+
+  const client = getClient();
+  const { operatorKey } = getOperatorCredentials();
+
+  const initialChunk = bytecode.subarray(0, MAX_FILE_CHUNK_BYTES);
+  const fileCreateTx = await new FileCreateTransaction()
+    .setKeys([operatorKey.publicKey])
+    .setContents(initialChunk)
+    .execute(client);
+
+  const fileCreateReceipt = await fileCreateTx.getReceipt(client);
+  const fileId = fileCreateReceipt.fileId;
+  if (!fileId) {
+    throw new Error("Failed to create contract bytecode file on HFS");
+  }
+
+  const transactionIds = [fileCreateTx.transactionId.toString()];
+
+  let offset = MAX_FILE_CHUNK_BYTES;
+  while (offset < bytecode.length) {
+    const chunk = bytecode.subarray(offset, offset + MAX_FILE_CHUNK_BYTES);
+    const appendTx = await new FileAppendTransaction()
+      .setFileId(fileId)
+      .setContents(chunk)
+      .execute(client);
+    await appendTx.getReceipt(client);
+    transactionIds.push(appendTx.transactionId.toString());
+    offset += MAX_FILE_CHUNK_BYTES;
+  }
+
+  // make the file immutable so HSCS can consume it
+  await new FileUpdateTransaction()
+    .setFileId(fileId)
+    .setKeys([]) // remove keys → immutable
+    .execute(client)
+    .then(tx => tx.getReceipt(client));
+
+
+  return { fileId, transactionIds };
 }
 
 export async function createAssetTokens(params: {
@@ -345,34 +481,6 @@ export async function createFractionToken(params: {
   };
 }
 
-async function getDistributorArtifact() {
-  const artifactPath = path.resolve(
-    process.cwd(),
-    "..",
-    "smart contract",
-    "artifacts",
-    "contracts",
-    "DividendDistributor.sol",
-    "DividendDistributor.json"
-  );
-
-  const stats = await fs.stat(artifactPath);
-  if (cachedDistributorArtifact && cachedDistributorArtifactMtimeMs === stats.mtimeMs) {
-    return cachedDistributorArtifact;
-  }
-
-  const raw = await fs.readFile(artifactPath, "utf8");
-  const parsed = JSON.parse(raw);
-
-  if (!parsed.bytecode) {
-    throw new Error("DividendDistributor artifact missing bytecode");
-  }
-
-  cachedDistributorArtifact = { bytecode: parsed.bytecode, abi: parsed.abi };
-  cachedDistributorArtifactMtimeMs = stats.mtimeMs;
-  return cachedDistributorArtifact;
-}
-
 export async function deployDividendDistributor(params: {
   nftTokenId: string;
   fractionTokenId: string;
@@ -380,50 +488,34 @@ export async function deployDividendDistributor(params: {
   ownerAccountId?: string;
   gas?: number;
 }) {
-  const client = getClient();
   const { operatorId } = getOperatorCredentials();
-  const artifact = await getDistributorArtifact();
-
-  const bytecode = Buffer.from(artifact.bytecode.replace(/^0x/, ""), "hex");
-  console.log("deployDividendDistributor.bytecodeLength", bytecode.length);
-
-  const nftAddress = `0x${TokenId.fromString(params.nftTokenId).toSolidityAddress()}`;
-  const fractionAddress = `0x${TokenId.fromString(params.fractionTokenId).toSolidityAddress()}`;
-  const ownerAccount = params.ownerAccountId
-    ? AccountId.fromString(params.ownerAccountId)
-    : operatorId;
-  const ownerAddress = `0x${ownerAccount.toSolidityAddress()}`;
-
-  const constructorParameters = new ContractFunctionParameters()
-    .addAddress(nftAddress)
-    .addAddress(fractionAddress)
-    .addUint256(Math.max(1, params.initialSupply))
-    .addAddress(ownerAddress);
-  console.log("deployDividendDistributor.constructorParams", {
-    nftAddress,
-    fractionAddress,
-    initialSupply: Math.max(1, params.initialSupply),
-    ownerAddress,
-  });
-
-  const createTx = await new ContractCreateFlow()
-    .setGas(params.gas ?? 3_000_000)
-    .setBytecode(bytecode)
-    .setConstructorParameters(constructorParameters)
-    .execute(client);
-
-  const receipt = await createTx.getReceipt(client);
-  if (!receipt.contractId) {
-    throw new Error("Failed to deploy DividendDistributor contract");
+  let deployment;
+  try {
+    deployment = await deployDividendDistributorEthers({
+      nftTokenId: params.nftTokenId,
+      fractionTokenId: params.fractionTokenId,
+      initialSupply: Math.max(1, params.initialSupply),
+      ownerAccountId: params.ownerAccountId ?? operatorId.toString(),
+      gasLimit: params.gas,
+    });
+  } catch (error: any) {
+    const message = error?.message ?? String(error);
+    throw new Error(`Failed to deploy dividend distributor via ethers: ${message}`);
   }
 
-  const contractId = receipt.contractId.toString();
+  const contractLink = toHashscanLink("contract", deployment.contractId);
+  const transactionId = deployment.transactionHash ?? null;
+  const deployLink = transactionId
+    ? toHashscanLink("transaction", transactionId)
+    : contractLink;
 
   return {
-    contractId,
-    transactionId: createTx.transactionId.toString(),
-    contractLink: toHashscanLink("contract", contractId),
-    deployLink: toHashscanLink("transaction", createTx.transactionId.toString()),
+    contractId: deployment.contractId,
+    transactionId,
+    contractLink,
+    deployLink,
+    contractAddress: deployment.contractAddress,
+    chainId: deployment.chainId,
   };
 }
 
@@ -517,8 +609,24 @@ export async function getPendingHbarForAccount(params: {
 
 export async function associateTokenToContract(contractId: string, tokenId: string) {
   const client = getClient();
+  const trimmed = contractId.trim();
+  let accountId: AccountId;
+
+  const hex40 = /^[0-9a-fA-F]{40}$/;
+  if (/^0x[0-9a-fA-F]{40}$/i.test(trimmed)) {
+    accountId = AccountId.fromEvmAddress(0, 0, trimmed);
+  } else if (/^0\.0\.\d+$/.test(trimmed)) {
+    accountId = AccountId.fromString(trimmed);
+  } else if (/^0\.0\.[0-9a-fA-F]{40}$/i.test(trimmed)) {
+    accountId = AccountId.fromEvmAddress(0, 0, `0x${trimmed.split(".")[2]}`);
+  } else if (hex40.test(trimmed)) {
+    accountId = AccountId.fromEvmAddress(0, 0, `0x${trimmed}`);
+  } else {
+    throw new Error(`Unsupported contract identifier format for association: ${contractId}`);
+  }
+
   const tx = await new TokenAssociateTransaction()
-    .setAccountId(AccountId.fromString(contractId))
+    .setAccountId(accountId)
     .setTokenIds([TokenId.fromString(tokenId)])
     .execute(client);
   await tx.getReceipt(client);
