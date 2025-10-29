@@ -23,6 +23,7 @@ Create `.env.local` at the repo root using the template below. All variables wit
 | --- | --- |
 | `OPERATOR_ID` | Hedera testnet account ID used as treasury + operator |
 | `OPERATOR_KEY` | Private key for the operator account |
+| `OPERATOR_EVM_KEY` *(optional)* | 64-byte ECDSA private key used when deploying the DividendDistributor via ethers. Falls back to `OPERATOR_KEY` when unset. |
 | `PINATA_JWT` | Pinata JWT for uploading metadata + assets to IPFS |
 | `ASSET_REGISTRY_FILE_ID` *(optional)* | Hedera File Service ID that stores the asset/index registry. Leave empty to auto-create on first write and copy the logged value back into `.env.local`. |
 | `HEDERA_NETWORK` *(optional)* | Overrides network for server code (`testnet` by default) |
@@ -32,6 +33,7 @@ Create `.env.local` at the repo root using the template below. All variables wit
 | `NEXT_PUBLIC_HEDERA_NETWORK` *(optional)* | Network badge + client usage (`testnet` default) |
 | `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` *(optional)* | WalletConnect cloud project for mobile wallets |
 | `NEXT_PUBLIC_WC_RELAY_URL` *(optional)* | WalletConnect relay (defaults to `wss://relay.walletconnect.com`) |
+| `SMART_CONTRACT_ARTIFACT_DIR` *(optional)* | Absolute or relative path to the `smart contract/artifacts` directory. Useful when deploying to platforms like AWS Amplify. Defaults to `../smart contract/artifacts`. |
 
 ## Setup & local development
 
@@ -60,6 +62,18 @@ npm --prefix . run start  # ensure the production server boots (Ctrl+C to stop)
 ```
 
 Warnings during `npm run build` about dynamic routes are expected—the API handlers require runtime context and stay dynamic.
+
+## Deploying to AWS Amplify
+
+1. **Connect the repository** and set `fullstack/` as the app root when prompted by Amplify.
+2. **Add the environment variables** listed above (at least `OPERATOR_ID`, `OPERATOR_KEY`, `PINATA_JWT`, WalletConnect IDs, and `SMART_CONTRACT_ARTIFACT_DIR=./smart-contract/artifacts`). Mark secrets as protected.
+3. **Amplify uses** the included [`amplify.yml`](./amplify.yml) build spec:
+	- Installs dependencies with `npm ci`.
+	- Copies `../smart contract/artifacts` into `./smart-contract/artifacts` so server code can read the ABI/bytecode at runtime.
+	- Runs `npm run build` to produce the Next.js output.
+4. Trigger a build and verify that minting an asset, buying shares, and fractionalizing work against your configured Hedera network.
+
+If you adjust the Solidity contracts later, run `npx hardhat compile` inside `smart contract/` and commit the refreshed `artifacts/` before pushing to Amplify.
 
 ## Key API routes
 

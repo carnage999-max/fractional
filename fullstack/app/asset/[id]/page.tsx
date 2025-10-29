@@ -6,10 +6,16 @@ import { useWallet } from "@/components/wallet/HWCProvider";
 import { useEffect, useMemo, useState } from "react";
 
 type Asset = {
-  id: string; name: string; description: string; image: string;
-  fractionTokenId: string; sharesAvailable: number; pricePerShare: string;
+  id: string;
+  name: string;
+  description: string;
+  image: string;
+  fractionTokenId: string;
+  sharesAvailable: number;
+  pricePerShare: string;
   metadataCid?: string | null;
   metadataFileId?: string | null;
+  treasuryAccountId?: string | null;
 };
 
 type ActivityEvent = {
@@ -120,8 +126,8 @@ export default function AssetDetail({ params }: { params: { id: string } }) {
     try {
       setLoading(true); setMsg(null);
       const body = {
-        tokenId: asset.fractionTokenId || process.env.DEMO_FT_TOKEN_ID,
-        sender: "0.0.issuer",         // demo treasury; replace in real flow
+        tokenId: asset.fractionTokenId,
+        sender: asset.treasuryAccountId || accountId,
         recipient: accountId,
         amount: Math.floor(Number(amount)),
       };

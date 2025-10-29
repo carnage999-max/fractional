@@ -23,6 +23,7 @@ export default function CreatePage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<CreateAssetResult | null>(null);
+  const [createdAssetId, setCreatedAssetId] = useState<string | null>(null);
 
   const connectWalletLabel = useMemo(() => {
     if (!status) return "Connect Wallet";
@@ -33,7 +34,8 @@ export default function CreatePage() {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
-    setResult(null);
+  setResult(null);
+  setCreatedAssetId(null);
 
     if (!accountId) {
       const message = "Connect your wallet before minting.";
@@ -70,9 +72,9 @@ export default function CreatePage() {
       }
 
       setResult(json);
+      setCreatedAssetId(json.asset.id);
       toast.success("Asset minted on Hedera");
       form.reset();
-      router.push(`/asset/${json.asset.id}`);
     } catch (err: any) {
       const message = err?.message || "Failed to mint asset";
       setError(message);
@@ -182,7 +184,17 @@ export default function CreatePage() {
 
       {result?.hedera && (
         <div className="rounded-3xl border border-border bg-muted/40 p-4 text-sm">
-          <h2 className="font-semibold">Latest Hedera actions</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="font-semibold">Latest Hedera actions</h2>
+            {createdAssetId && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-foreground/60">Asset ready</span>
+                <Button size="sm" variant="outline" onClick={() => router.push(`/asset/${createdAssetId}`)}>
+                  View asset
+                </Button>
+              </div>
+            )}
+          </div>
           <ul className="mt-2 space-y-1">
             {result.hedera.nft?.tokenLink && (
               <li>

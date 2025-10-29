@@ -141,6 +141,7 @@ async function enrichRecord(record: AssetRecord): Promise<Asset> {
     metadataFileId: record.metadataFileId,
     nftSerialNumber: record.nftSerialNumber,
     creator: record.creator,
+    treasuryAccountId: record.treasuryAccountId,
     createdAt: record.createdAt,
   };
 }

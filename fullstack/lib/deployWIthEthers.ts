@@ -76,11 +76,41 @@ export async function deployDividendDistributorEthers({
   ownerAccountId,
   gasLimit,
 }: DeployDividendDistributorParams): Promise<DeployDividendDistributorResult> {
+  const resolveArtifactDir = () => {
+    const customDir = process.env.SMART_CONTRACT_ARTIFACT_DIR;
+    if (customDir) {
+      const resolved = path.resolve(process.cwd(), customDir);
+      if (fs.existsSync(resolved)) {
+        return resolved;
+      }
+      throw new Error(
+        `SMART_CONTRACT_ARTIFACT_DIR set to "${customDir}" but directory was not found from ${process.cwd()}`
+      );
+    }
+
+    const defaultDir = path.resolve(process.cwd(), "..", "smart contract", "artifacts");
+    if (fs.existsSync(defaultDir)) {
+      return defaultDir;
+    }
+
+    const fallbackDir = path.resolve(process.cwd(), "smart-contract", "artifacts");
+    if (fs.existsSync(fallbackDir)) {
+      return fallbackDir;
+    }
+
+    const standaloneDir = path.resolve(process.cwd(), ".next", "standalone", "smart-contract", "artifacts");
+    if (fs.existsSync(standaloneDir)) {
+      return standaloneDir;
+    }
+
+    throw new Error(
+      "Unable to locate smart contract artifacts. Provide SMART_CONTRACT_ARTIFACT_DIR or keep '../smart contract/artifacts' in the deployment bundle."
+    );
+  };
+
+  const artifactsDir = resolveArtifactDir();
   const artifactPath = path.resolve(
-    process.cwd(),
-    "..",
-    "smart contract",
-    "artifacts",
+    artifactsDir,
     "contracts",
     "DividendDistributor.sol",
     "DividendDistributor.json"

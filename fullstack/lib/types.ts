@@ -4,7 +4,7 @@ export interface Asset {
   nftTokenId: string; fractionTokenId: string; distributor: string;
   pricePerShare: string; sharesTotal: number; sharesAvailable: number; apr?: string;
   metadataCid?: string | null; metadataFileId?: string | null; nftSerialNumber?: number | null;
-  creator: string; createdAt: string;
+  creator: string; createdAt: string; treasuryAccountId: string;
 }
 export interface Holding { assetId: string; shares: number; pendingRewards: number; }
 export interface ActivityEvent {

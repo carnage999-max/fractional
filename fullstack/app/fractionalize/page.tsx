@@ -10,9 +10,13 @@ import { useToast } from "@/components/ui/ToastProvider";
 const toGateway = (uri?: string | null) => {
   if (!uri) return null;
   if (uri.startsWith("ipfs://")) {
-    return `https://ipfs.io/ipfs/${uri.replace("ipfs://", "")}`;
+    const stripped = uri.replace("ipfs://", "").replace(/^\/+/, "");
+    return stripped ? `https://ipfs.io/ipfs/${stripped}` : null;
   }
-  return uri;
+  if (/^https?:\/\//i.test(uri) || uri.startsWith("/")) {
+    return uri;
+  }
+  return null;
 };
 
 type OwnedNft = {
