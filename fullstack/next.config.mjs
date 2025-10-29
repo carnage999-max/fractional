@@ -22,4 +22,27 @@ const nextConfig = {
 	},
 };
 
+// Add headers to reduce caching of HTML pages (so clients don't hold stale HTML that references old chunk names)
+// while keeping long-term caching for immutable _next static assets.
+nextConfig.headers = async () => {
+	return [
+		// Serve _next static assets (chunks, runtime) with long immutable caching
+		{
+			source: '/_next/static/:path*',
+			headers: [
+				{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
+			],
+		},
+		// For all other frontend routes (not starting with _next), reduce caching so HTML is always revalidated.
+		// This prevents stale HTML from referencing outdated chunk filenames.
+		{
+			// negative lookahead to exclude _next paths
+			source: '/((?!_next/).*)',
+			headers: [
+				{ key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+			],
+		},
+	];
+};
+
 export default nextConfig;

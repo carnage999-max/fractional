@@ -35,6 +35,14 @@ applications:
             - npm run build
             # Debug: list built client chunks so deployed artifact includes expected filenames
             - echo "Listing .next/static/chunks after build:" && ls -la .next/static/chunks || true
+            # If a CloudFront Distribution ID is provided via CF_DIST_ID env var, invalidate the chunks folder
+            - |
+              if [ -n "$CF_DIST_ID" ]; then
+                echo "CF_DIST_ID provided, creating invalidation for /_next/static/chunks/* ..."
+                aws cloudfront create-invalidation --distribution-id "$CF_DIST_ID" --paths "/_next/static/chunks/*" || true
+              else
+                echo "CF_DIST_ID not set, skipping CloudFront invalidation."
+              fi
       artifacts:
         # baseDirectory is relative to the configured appRoot (fullstack),
         # so use .next instead of fullstack/.next
