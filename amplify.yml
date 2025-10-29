@@ -5,11 +5,16 @@ applications:
       phases:
         preBuild:
           commands:
-            - npm ci
-            # ensure target dir exists inside the app root
+            # run install inside the app root where the package-lock.json lives
+            - echo "PWD: $(pwd)"
+            - echo "Listing repo root contents:" && ls -la || true
+            - echo "Installing dependencies in fullstack/ (using lockfile there)..."
+            - cd fullstack && npm ci || (echo "npm ci failed, falling back to npm install" && npm install)
+            # ensure target dir exists inside the app root for copied artifacts
             - mkdir -p "fullstack/smart-contract/artifacts"
             # try copying artifacts from either possible locations in the repo root
             - |
+              echo "Checking possible artifact locations from repo root..."
               if [ -d "smart contract/artifacts" ]; then
                 echo "Copying artifacts from 'smart contract/artifacts'..."
                 cp -a "smart contract/artifacts/." "fullstack/smart-contract/artifacts/"
@@ -17,8 +22,7 @@ applications:
                 echo "Copying artifacts from 'smart-contract/artifacts'..."
                 cp -a "smart-contract/artifacts/." "fullstack/smart-contract/artifacts/"
               else
-                echo "No smart contract artifacts directory found at expected locations (from repo root)."
-                ls -la || true
+                echo "No smart contract artifacts directory found at expected locations (from repo root). Listing root for debugging:" && ls -la || true
               fi
         build:
           commands:
