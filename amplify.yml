@@ -1,0 +1,34 @@
+version: 1
+applications:
+  - appRoot: fullstack
+    frontend:
+      phases:
+        preBuild:
+          commands:
+            - npm ci
+            # ensure target dir exists inside the app root
+            - mkdir -p "fullstack/smart-contract/artifacts"
+            # try copying artifacts from either possible locations in the repo root
+            - |
+              if [ -d "smart contract/artifacts" ]; then
+                echo "Copying artifacts from 'smart contract/artifacts'..."
+                cp -a "smart contract/artifacts/." "fullstack/smart-contract/artifacts/"
+              elif [ -d "smart-contract/artifacts" ]; then
+                echo "Copying artifacts from 'smart-contract/artifacts'..."
+                cp -a "smart-contract/artifacts/." "fullstack/smart-contract/artifacts/"
+              else
+                echo "No smart contract artifacts directory found at expected locations (from repo root)."
+                ls -la || true
+              fi
+        build:
+          commands:
+            - cd fullstack
+            - npm run build
+      artifacts:
+        baseDirectory: fullstack/.next
+        files:
+          - "**/*"
+      cache:
+        paths:
+          - fullstack/node_modules/**
+          - fullstack/.next/cache/**
