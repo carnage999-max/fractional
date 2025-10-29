@@ -4,7 +4,6 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import dynamic from "next/dynamic";
 import ToastProvider from "@/components/ui/ToastProvider";
-import dynamic from "next/dynamic";
 const ChunkReloadHandler = dynamic(() => import("@/components/ChunkReloadHandler"), { ssr: false });
 
 const HWCProvider = dynamic(() => import("@/components/wallet/HWCProvider"), { ssr: false });
