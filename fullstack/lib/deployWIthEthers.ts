@@ -106,12 +106,18 @@ export async function deployDividendDistributorEthers({
       path.resolve(moduleDir, "../../.."),
     ].filter(Boolean) as string[]
   );
+  const attempted: string[] = [];
+
+  const checkDir = (target: string) => {
+    attempted.push(target);
+    return fs.existsSync(target);
+  };
 
   const resolveArtifactDir = () => {
     const customDir = process.env.SMART_CONTRACT_ARTIFACT_DIR;
     if (customDir) {
       const resolved = path.resolve(process.cwd(), customDir);
-      if (fs.existsSync(resolved)) {
+      if (checkDir(resolved)) {
         return resolved;
       }
       throw new Error(
@@ -121,28 +127,30 @@ export async function deployDividendDistributorEthers({
 
     for (const root of candidateRoots) {
       const withSpace = path.resolve(root, "smart contract", "artifacts");
-      if (fs.existsSync(withSpace)) {
+      if (checkDir(withSpace)) {
         return withSpace;
       }
 
       const hyphenated = path.resolve(root, "smart-contract", "artifacts");
-      if (fs.existsSync(hyphenated)) {
+      if (checkDir(hyphenated)) {
         return hyphenated;
       }
 
       const standaloneWithSpace = path.resolve(root, ".next", "standalone", "smart contract", "artifacts");
-      if (fs.existsSync(standaloneWithSpace)) {
+      if (checkDir(standaloneWithSpace)) {
         return standaloneWithSpace;
       }
 
       const standaloneHyphen = path.resolve(root, ".next", "standalone", "smart-contract", "artifacts");
-      if (fs.existsSync(standaloneHyphen)) {
+      if (checkDir(standaloneHyphen)) {
         return standaloneHyphen;
       }
     }
 
     throw new Error(
-      "Unable to locate smart contract artifacts. Provide SMART_CONTRACT_ARTIFACT_DIR or keep '../smart contract/artifacts' in the deployment bundle."
+      `Unable to locate smart contract artifacts. Provide SMART_CONTRACT_ARTIFACT_DIR or keep '../smart contract/artifacts' in the deployment bundle. Searched: ${attempted.join(
+        ", "
+      ) || "<none>"}`
     );
   };
 
