@@ -116,13 +116,31 @@ export async function deployDividendDistributorEthers({
   const resolveArtifactDir = () => {
     const customDir = process.env.SMART_CONTRACT_ARTIFACT_DIR;
     if (customDir) {
-      const resolved = path.resolve(process.cwd(), customDir);
-      if (checkDir(resolved)) {
-        return resolved;
-      }
-      throw new Error(
-        `SMART_CONTRACT_ARTIFACT_DIR set to "${customDir}" but directory was not found from ${process.cwd()}`
+      const candidates = unique(
+        [
+          path.isAbsolute(customDir) ? customDir : path.resolve(process.cwd(), customDir),
+          path.isAbsolute(customDir) ? customDir : path.resolve(moduleDir, customDir),
+        ].filter(Boolean) as string[]
       );
+      for (const candidate of candidates) {
+        if (checkDir(candidate)) {
+          return candidate;
+        }
+      }
+      console.warn(
+        `[deployDividendDistributorEthers] SMART_CONTRACT_ARTIFACT_DIR="${customDir}" not found (checked ${candidates.join(
+          ", "
+        )}). Falling back to automatic discovery.`
+      );
+    }
+    // Check commonly used packaging locations. In monorepos and Vercel deployments
+    // the smart contract artifacts may be placed inside the app's `public/__artifacts`
+    // directory (we commit those earlier). Prefer explicit env var, then public,
+    // then the sibling "smart contract/artifacts" path used in local development.
+
+    const publicArtifactsDir = path.resolve(process.cwd(), "public", "__artifacts");
+    if (fs.existsSync(publicArtifactsDir)) {
+      return publicArtifactsDir;
     }
 
     for (const root of candidateRoots) {
