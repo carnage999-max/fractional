@@ -1,9 +1,7 @@
 {
   "functions": {
     "app/**/route.js": {
-      "includeFiles": [
-        "../smart contract/artifacts/**/*"
-      ]
+      "includeFiles": "public/__artifacts/**/*"
     }
   }
 }
