@@ -1,0 +1,9 @@
+{
+  "functions": {
+    "app/**/route.js": {
+      "includeFiles": [
+        "../smart contract/artifacts/**/*"
+      ]
+    }
+  }
+}

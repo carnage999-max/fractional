@@ -147,6 +147,18 @@ export async function deployDividendDistributorEthers({
       }
     }
 
+    // Local dev or Vercel build copy to public/__artifacts
+    const publicArtifactsCandidates = [
+      path.resolve(process.cwd(), "public", "__artifacts"),
+      path.resolve(moduleDir, "..", "public", "__artifacts"),
+      path.resolve(moduleDir, "..", "..", "public", "__artifacts"),
+    ];
+    for (const candidate of publicArtifactsCandidates) {
+      if (checkDir(candidate)) {
+        return candidate;
+      }
+    }
+
     throw new Error(
       `Unable to locate smart contract artifacts. Provide SMART_CONTRACT_ARTIFACT_DIR or keep '../smart contract/artifacts' in the deployment bundle. Searched: ${attempted.join(
         ", "
