@@ -33,8 +33,13 @@ async function fetchJSON(url: string, init?: RequestInit) {
 }
 
 export default function AssetDetail({ params }: { params: { id: string } }) {
-  const { accountId, signAndExecute } = useWallet();
+  const { accountId, signAndExecute, status } = useWallet();
   const toast = useToast();
+  
+  // Debug wallet state
+  useEffect(() => {
+    console.log("[AssetDetail] Wallet state:", { accountId, status });
+  }, [accountId, status]);
   const [asset, setAsset] = useState<Asset | null>(null);
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [amount, setAmount] = useState<number>(0);
@@ -121,7 +126,12 @@ export default function AssetDetail({ params }: { params: { id: string } }) {
 
   const buy = async () => {
     if (!asset) return;
-    if (!accountId) { setMsg("Connect your wallet first."); return; }
+    console.log("[AssetDetail] Buy clicked, accountId:", accountId);
+    if (!accountId) { 
+      setMsg("Wallet not connected. Please connect your wallet first."); 
+      toast.error("Wallet not connected");
+      return; 
+    }
     if (amount <= 0) { setMsg("Enter a valid share amount."); return; }
     try {
       setLoading(true); setMsg(null);
@@ -279,9 +289,20 @@ export default function AssetDetail({ params }: { params: { id: string } }) {
         <div className="rounded-3xl border border-border bg-card/70 p-6 shadow-innerglow">
           <div className="flex items-center justify-between"><span className="text-sm text-foreground/70">Price per share</span><span className="font-semibold">${asset.pricePerShare}</span></div>
           <div className="flex items-center justify-between"><span className="text-sm text-foreground/70">Available</span><span className="font-semibold">{asset.sharesAvailable}</span></div>
+          {accountId && (
+            <div className="flex items-center justify-between mt-2">
+              <span className="text-sm text-foreground/70">Your Account</span>
+              <span className="text-xs font-mono text-green-400">{accountId}</span>
+            </div>
+          )}
+          {!accountId && (
+            <div className="mt-2 p-2 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+              <p className="text-xs text-yellow-400">⚠️ Wallet not connected. Please connect your wallet from the navbar.</p>
+            </div>
+          )}
           <div className="mt-4 space-y-2">
             <input value={amount || ""} onChange={(e)=>setAmount(Number(e.target.value))} placeholder="Amount of shares" className="w-full rounded-2xl bg-muted/80 border border-border px-3 py-2 text-foreground placeholder:text-foreground/40"/>
-            <Button className="w-full" disabled={loading} onClick={buy}>{loading? "Processing..." : "Buy Shares"}</Button>
+            <Button className="w-full" disabled={loading || !accountId} onClick={buy}>{loading? "Processing..." : !accountId ? "Connect Wallet First" : "Buy Shares"}</Button>
             {msg && <p className="text-xs text-foreground/80 mt-2">{msg}</p>}
           </div>
         </div>
