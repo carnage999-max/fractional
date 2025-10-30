@@ -1,6 +1,7 @@
 import { ethers } from "ethers";
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 import { AccountId, ContractId, TokenId, PrivateKey } from "@hashgraph/sdk";
 
 export type DeployDividendDistributorResult = {
@@ -76,6 +77,36 @@ export async function deployDividendDistributorEthers({
   ownerAccountId,
   gasLimit,
 }: DeployDividendDistributorParams): Promise<DeployDividendDistributorResult> {
+  const moduleDir = (() => {
+    try {
+      if (typeof __dirname === "string") {
+        return __dirname;
+      }
+    } catch {
+      // no-op
+    }
+    try {
+      return path.dirname(fileURLToPath(import.meta.url));
+    } catch {
+      return process.cwd();
+    }
+  })();
+
+  const unique = <T>(values: T[]) => Array.from(new Set(values));
+  const candidateRoots = unique(
+    [
+      process.env.SMART_CONTRACT_ARTIFACT_ROOT && path.resolve(process.env.SMART_CONTRACT_ARTIFACT_ROOT),
+      process.env.APP_ROOT && path.resolve(process.env.APP_ROOT),
+      process.cwd(),
+      path.resolve(process.cwd(), ".."),
+      path.resolve(process.cwd(), "../.."),
+      moduleDir,
+      path.resolve(moduleDir, ".."),
+      path.resolve(moduleDir, "../.."),
+      path.resolve(moduleDir, "../../.."),
+    ].filter(Boolean) as string[]
+  );
+
   const resolveArtifactDir = () => {
     const customDir = process.env.SMART_CONTRACT_ARTIFACT_DIR;
     if (customDir) {
@@ -88,24 +119,26 @@ export async function deployDividendDistributorEthers({
       );
     }
 
-    const defaultDir = path.resolve(process.cwd(), "..", "smart contract", "artifacts");
-    if (fs.existsSync(defaultDir)) {
-      return defaultDir;
-    }
+    for (const root of candidateRoots) {
+      const withSpace = path.resolve(root, "smart contract", "artifacts");
+      if (fs.existsSync(withSpace)) {
+        return withSpace;
+      }
 
-    const siblingDir = path.resolve(process.cwd(), "smart contract", "artifacts");
-    if (fs.existsSync(siblingDir)) {
-      return siblingDir;
-    }
+      const hyphenated = path.resolve(root, "smart-contract", "artifacts");
+      if (fs.existsSync(hyphenated)) {
+        return hyphenated;
+      }
 
-    const fallbackDir = path.resolve(process.cwd(), "smart-contract", "artifacts");
-    if (fs.existsSync(fallbackDir)) {
-      return fallbackDir;
-    }
+      const standaloneWithSpace = path.resolve(root, ".next", "standalone", "smart contract", "artifacts");
+      if (fs.existsSync(standaloneWithSpace)) {
+        return standaloneWithSpace;
+      }
 
-    const standaloneDir = path.resolve(process.cwd(), ".next", "standalone", "smart-contract", "artifacts");
-    if (fs.existsSync(standaloneDir)) {
-      return standaloneDir;
+      const standaloneHyphen = path.resolve(root, ".next", "standalone", "smart-contract", "artifacts");
+      if (fs.existsSync(standaloneHyphen)) {
+        return standaloneHyphen;
+      }
     }
 
     throw new Error(
