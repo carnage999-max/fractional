@@ -357,23 +357,28 @@ export async function transferNftToAccount({
 
 export const MAX_FILE_CHUNK_BYTES = 4000;
 
-export async function storeJsonInHfs(payload: unknown) {
+export async function storeJsonInHfs(payload: unknown, options?: { memo?: string }) {
   const client = getClient();
   const { operatorKey } = getOperatorCredentials();
   const contents = Buffer.from(JSON.stringify(payload));
 
   const initialChunk = contents.subarray(0, MAX_FILE_CHUNK_BYTES);
-  const createTx = await new FileCreateTransaction()
+  const createTx = new FileCreateTransaction()
     .setKeys([operatorKey.publicKey])
-    .setContents(initialChunk)
-    .execute(client);
-  const createReceipt = await createTx.getReceipt(client);
+    .setContents(initialChunk);
+
+  if (options?.memo) {
+    createTx.setFileMemo(options.memo.slice(0, 100));
+  }
+
+  const executed = await createTx.execute(client);
+  const createReceipt = await executed.getReceipt(client);
   const fileId = createReceipt.fileId;
   if (!fileId) {
     throw new Error("Failed to create HFS file");
   }
 
-  const transactionIds = [createTx.transactionId.toString()];
+  const transactionIds = [executed.transactionId.toString()];
 
   let offset = MAX_FILE_CHUNK_BYTES;
   while (offset < contents.length) {

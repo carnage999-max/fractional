@@ -3,6 +3,8 @@ import { MIRROR, getAccountTokenBalance } from "./mirror";
 import type { ActivityEvent, Asset, AssetCategory } from "./types";
 
 const REGISTRY_VERSION = 1;
+const REGISTRY_KIND = "fractional.registry.v1";
+const REGISTRY_MEMO = "fractional-registry-v1";
 
 export type AssetRecord = {
   id: string;
@@ -29,10 +31,11 @@ export type AssetRecord = {
 
 type RegistryDocument = {
   version: number;
+  kind: string;
   assets: AssetRecord[];
 };
 
-const emptyRegistry: RegistryDocument = { version: REGISTRY_VERSION, assets: [] };
+const emptyRegistry: RegistryDocument = { version: REGISTRY_VERSION, kind: REGISTRY_KIND, assets: [] };
 
 function normaliseSearch(value: string) {
   return value.trim().toLowerCase();
@@ -61,17 +64,25 @@ async function fetchRegistryDocument(fileId: string): Promise<RegistryDocument> 
       if (!trimmed) return emptyRegistry;
       try {
         const doc = JSON.parse(trimmed);
-        if (!doc.version) {
-          return { version: REGISTRY_VERSION, assets: doc.assets ?? [] };
+        if (!Array.isArray(doc.assets)) {
+          throw new Error("Not a registry document");
         }
-        return doc as RegistryDocument;
+        return {
+          version: typeof doc.version === "number" ? doc.version : REGISTRY_VERSION,
+          kind: typeof doc.kind === "string" ? doc.kind : REGISTRY_KIND,
+          assets: doc.assets,
+        };
       } catch {
         const decoded = Buffer.from(trimmed, "base64").toString("utf8");
         const doc = JSON.parse(decoded);
-        if (!doc.version) {
-          return { version: REGISTRY_VERSION, assets: doc.assets ?? [] };
+        if (!Array.isArray(doc.assets)) {
+          throw new Error("Not a registry document");
         }
-        return doc as RegistryDocument;
+        return {
+          version: typeof doc.version === "number" ? doc.version : REGISTRY_VERSION,
+          kind: typeof doc.kind === "string" ? doc.kind : REGISTRY_KIND,
+          assets: doc.assets,
+        };
       }
     } catch (error: any) {
       lastError = error instanceof Error ? error : new Error(String(error));
@@ -81,10 +92,48 @@ async function fetchRegistryDocument(fileId: string): Promise<RegistryDocument> 
   throw lastError ?? new Error(`Failed to read registry file ${fileId}`);
 }
 
+async function discoverRegistryFileId(): Promise<string | null> {
+  const operatorAccount = process.env.OPERATOR_ID;
+  if (!operatorAccount) return null;
+
+  try {
+    const params = new URLSearchParams({
+      "account.id": operatorAccount,
+      order: "desc",
+      limit: "25",
+    });
+    const res = await fetch(`${MIRROR}/files?${params.toString()}`, { cache: "no-store" });
+    if (!res.ok) {
+      throw new Error(`Mirror file query failed (${res.status})`);
+    }
+
+    const json = await res.json();
+    const files: Array<{ file_id?: string }> = Array.isArray(json.files) ? json.files : [];
+
+    for (const entry of files) {
+      const candidateId = entry.file_id;
+      if (!candidateId) continue;
+      try {
+        const doc = await fetchRegistryDocument(candidateId);
+        if (doc.kind === REGISTRY_KIND && Array.isArray(doc.assets)) {
+          process.env.ASSET_REGISTRY_FILE_ID = candidateId;
+          return candidateId;
+        }
+      } catch {
+        continue;
+      }
+    }
+  } catch (error) {
+    console.warn("Failed to auto-discover registry file from mirror", error);
+  }
+
+  return null;
+}
+
 async function ensureRegistry(): Promise<{ fileId: string; doc: RegistryDocument }> {
-  let fileId = process.env.ASSET_REGISTRY_FILE_ID;
+  let fileId = process.env.ASSET_REGISTRY_FILE_ID ?? (await discoverRegistryFileId());
   if (!fileId) {
-    const created = await storeJsonInHfs(emptyRegistry);
+    const created = await storeJsonInHfs(emptyRegistry, { memo: REGISTRY_MEMO });
     fileId = created.fileId;
     process.env.ASSET_REGISTRY_FILE_ID = fileId;
     console.warn(`Created new asset registry file on HFS: ${fileId}. Persist this ID in ASSET_REGISTRY_FILE_ID.`);
@@ -93,6 +142,10 @@ async function ensureRegistry(): Promise<{ fileId: string; doc: RegistryDocument
 
   try {
     const doc = await fetchRegistryDocument(fileId);
+    if (doc.kind !== REGISTRY_KIND) {
+      console.warn(`Registry file ${fileId} has unexpected kind ${doc.kind}; resetting to empty registry.`);
+      return { fileId, doc: emptyRegistry };
+    }
     return { fileId, doc };
   } catch (error) {
     console.error("Failed to read asset registry from HFS; falling back to empty registry", error);
@@ -101,10 +154,14 @@ async function ensureRegistry(): Promise<{ fileId: string; doc: RegistryDocument
 }
 
 async function loadRegistry(): Promise<{ fileId: string | null; doc: RegistryDocument }> {
-  const fileId = process.env.ASSET_REGISTRY_FILE_ID;
+  let fileId = process.env.ASSET_REGISTRY_FILE_ID ?? (await discoverRegistryFileId());
   if (!fileId) return { fileId: null, doc: emptyRegistry };
   try {
     const doc = await fetchRegistryDocument(fileId);
+    if (doc.kind !== REGISTRY_KIND) {
+      console.warn(`Registry file ${fileId} has unexpected kind ${doc.kind}; returning empty registry.`);
+      return { fileId, doc: emptyRegistry };
+    }
     return { fileId, doc };
   } catch (error) {
     console.error("Failed to read asset registry from HFS", error);
