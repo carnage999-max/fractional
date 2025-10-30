@@ -1,6 +1,9 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useMemo, useState, useRef, useCallback } from "react";
+import { safeDynamicImport } from "@/lib/safeImport";
+
+
 
 type Ctx = {
     accountId: string | null;
@@ -46,7 +49,7 @@ export default function HWCProvider({ children }: { children: React.ReactNode })
 
     useEffect(() => {
         mounted.current = true;
-        
+
         // If we already have a global instance, reuse it
         if (globalHashConnect && !isInitializing) {
             console.log("[HWC] Reusing existing HashConnect instance");
@@ -54,7 +57,7 @@ export default function HWCProvider({ children }: { children: React.ReactNode })
             setStatus("ready");
             return;
         }
-        
+
         // Prevent multiple initializations
         if (isInitializing) {
             console.log("[HWC] Already initializing, waiting...");
@@ -68,36 +71,39 @@ export default function HWCProvider({ children }: { children: React.ReactNode })
             }, 100);
             return () => clearInterval(checkReady);
         }
-        
+
         isInitializing = true;
-        
+
         (async () => {
             try {
                 console.log("[HWC] Starting initialization...");
                 setStatus("loading");
-                
+
                 // Wait for DOM to be ready
                 await waitForDomReady();
+                // Wait until Next.js hydration completes
+                await new Promise((r) => setTimeout(r, 300));
+                console.log("[HWC] Next.js hydration completed");
 
                 // Initialize HashConnect (supports both extension and WalletConnect)  
-                const { HashConnect } = await import("hashconnect");
-                const { LedgerId } = await import("@hashgraph/sdk");
-                
+                const { HashConnect } = await safeDynamicImport(() => import("hashconnect"));
+                const { LedgerId } = await safeDynamicImport(() => import("@hashgraph/sdk"));
+
                 const appMeta = {
                     name: "Fractional",
                     description: "RWA & NFTs on Hedera",
                     icons: [window.location.origin + "/logo.svg"],
                     url: window.location.origin,
                 };
-                
+
                 // Get WalletConnect configuration
                 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "";
                 const relayUrl = process.env.NEXT_PUBLIC_WC_RELAY_URL || "wss://relay.walletconnect.com";
-                
+
                 console.log("[HWC] Creating HashConnect instance...");
                 console.log("[HWC] Project ID from env:", projectId);
                 console.log("[HWC] Relay URL from env:", relayUrl);
-                
+
                 let hc;
                 if (projectId) {
                     console.log("[HWC] Initializing with WalletConnect support using Project ID:", projectId);
@@ -127,17 +133,17 @@ export default function HWCProvider({ children }: { children: React.ReactNode })
                         true // debug mode enabled for troubleshooting
                     );
                 }
-                
+
                 console.log("[HWC] Setting up event listeners...");
-                
+
                 // Listen for pairing events (both extension and WalletConnect)
                 hc.pairingEvent.on((data: any) => {
                     console.log("[HWC] Pairing established", data);
                     setPairing(data);
                     const id = data?.accountIds?.[0] || null;
                     setAccountId(id);
-                    try { 
-                        localStorage.setItem("hashconnectData", JSON.stringify(data)); 
+                    try {
+                        localStorage.setItem("hashconnectData", JSON.stringify(data));
                     } catch { }
                     setStatus(`paired:${id || "unknown"}`);
                 });
@@ -151,15 +157,20 @@ export default function HWCProvider({ children }: { children: React.ReactNode })
                 // Initialize HashConnect with shorter timeout and retry logic
                 try {
                     const initPromise = hc.init();
-                    const timeoutPromise = new Promise((_, reject) => 
+                    const timeoutPromise = new Promise((_, reject) =>
                         setTimeout(() => reject(new Error("HashConnect initialization timeout (5s)")), 5000)
                     );
-                    
+
                     await Promise.race([initPromise, timeoutPromise]);
                     console.log("[HWC] HashConnect initialized successfully");
                 } catch (initError: any) {
+                    if (initError?.name === "ChunkLoadError") {
+                        console.warn("[HWC] Detected ChunkLoadError during init, forcing reload");
+                        window.location.reload();
+                        return;
+                    }
                     console.warn("[HWC] Initial HashConnect init failed:", initError.message);
-                    
+
                     // If WalletConnect fails, try again with extension-only mode
                     if (projectId && (initError.message.includes("Failed to publish") || initError.message.includes("WebSocket") || initError.message.includes("timeout"))) {
                         console.log("[HWC] WalletConnect seems to be failing, retrying with extension-only mode...");
@@ -169,7 +180,7 @@ export default function HWCProvider({ children }: { children: React.ReactNode })
                             appMeta,
                             true
                         );
-                        
+
                         try {
                             await hc.init();
                             console.log("[HWC] Extension-only mode initialized successfully");
@@ -222,8 +233,8 @@ export default function HWCProvider({ children }: { children: React.ReactNode })
             }
         })();
 
-        return () => { 
-            mounted.current = false; 
+        return () => {
+            mounted.current = false;
         };
     }, []);
 
@@ -268,7 +279,7 @@ export default function HWCProvider({ children }: { children: React.ReactNode })
             setStatus("error:walletconnect_not_configured - Please use HashPack extension or configure WalletConnect");
             return;
         }
-        
+
         setStatus("connecting:modal");
         try {
             console.log("[HWC] Attempting to open WalletConnect pairing modal...");
@@ -287,7 +298,7 @@ export default function HWCProvider({ children }: { children: React.ReactNode })
                 stack: e.stack,
                 cause: e.cause
             });
-            
+
             if (e.message && e.message.includes("Failed to publish payload")) {
                 console.error("[HWC] WalletConnect payload publish failed - network or configuration issue");
                 setStatus("error:WalletConnect network issue - try HashPack extension instead");
@@ -310,14 +321,14 @@ export default function HWCProvider({ children }: { children: React.ReactNode })
                     console.warn("[HWC] Disconnect failed", e);
                 }
             }
-            
+
             // Clear local storage
             try {
                 localStorage.removeItem("hashconnectData");
             } catch (e) {
                 console.warn("[HWC] Failed to clear storage", e);
             }
-            
+
             setPairing(null);
             setAccountId(null);
             setStatus("disconnected");
@@ -338,11 +349,11 @@ export default function HWCProvider({ children }: { children: React.ReactNode })
                 byteArray: txBase64,
                 metadata: { accountToSign: accountId, returnTransaction: false }
             } as any);
-            
+
             if (!result?.receipt) {
                 throw new Error("No receipt returned");
             }
-            
+
             setStatus("tx:submitted");
             return result.receipt?.transactionId || "";
         } catch (e: any) {
@@ -351,14 +362,14 @@ export default function HWCProvider({ children }: { children: React.ReactNode })
         }
     }, [accountId, hashConnect, pairing]);
 
-    const value = useMemo(() => ({ 
-        accountId, 
-        connect, 
-        connectExtension, 
-        disconnect, 
-        signAndExecute, 
-        status, 
-        isExtensionAvailable 
+    const value = useMemo(() => ({
+        accountId,
+        connect,
+        connectExtension,
+        disconnect,
+        signAndExecute,
+        status,
+        isExtensionAvailable
     }), [accountId, connect, connectExtension, disconnect, signAndExecute, status, isExtensionAvailable]);
 
     return <WalletCtx.Provider value={value}>{children}</WalletCtx.Provider>;
