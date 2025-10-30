@@ -4,7 +4,10 @@ import path from "path";
 const PINATA_PIN_JSON_ENDPOINT = "https://api.pinata.cloud/pinning/pinJSONToIPFS";
 
 function resolvePinataJwt(): string | null {
-  const fromEnv = process.env.PINATA_JWT?.trim();
+  const fromEnv =
+    process.env.PINATA_JWT?.trim() ||
+    process.env.PINATA_JSON_WEB_TOKEN?.trim() ||
+    process.env.AMPLIFY_PINATA_JWT?.trim();
   if (fromEnv) {
     return fromEnv;
   }
