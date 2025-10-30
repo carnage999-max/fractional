@@ -141,7 +141,9 @@ export default function AssetDetail({ params }: { params: { id: string } }) {
         recipient: accountId,
         amount: Math.floor(Number(amount)),
       };
+      console.log("[AssetDetail] Sending buy request:", body);
       const composed = await fetchJSON("/api/rpc/compose/ft-transfer", { method: "POST", headers: { "Content-Type":"application/json" }, body: JSON.stringify(body) });
+      console.log("[AssetDetail] Composed transaction:", composed);
       const txId = await signAndExecute(composed.bytes);
       setMsg(`Submitted: ${txId}`);
       toast.success("Share purchase submitted to your wallet");
