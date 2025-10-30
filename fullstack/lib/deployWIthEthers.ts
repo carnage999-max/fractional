@@ -93,6 +93,11 @@ export async function deployDividendDistributorEthers({
       return defaultDir;
     }
 
+    const siblingDir = path.resolve(process.cwd(), "smart contract", "artifacts");
+    if (fs.existsSync(siblingDir)) {
+      return siblingDir;
+    }
+
     const fallbackDir = path.resolve(process.cwd(), "smart-contract", "artifacts");
     if (fs.existsSync(fallbackDir)) {
       return fallbackDir;

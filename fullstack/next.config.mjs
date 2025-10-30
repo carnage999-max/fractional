@@ -1,4 +1,10 @@
 import crypto from "crypto";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const monorepoRoot = path.resolve(__dirname, "..");
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -50,7 +56,15 @@ const nextConfig = {
   webpack(config) {
   config.output.chunkFilename = 'static/chunks/[name].[contenthash].js';
   return config;
-}
+},
+
+  // ✅ Ensure Hedera contract artifacts ship with the server bundle
+  experimental: {
+    outputFileTracingRoot: monorepoRoot,
+    outputFileTracingIncludes: {
+      "/app/api/assets/route": ["smart contract/artifacts/**/*"],
+    },
+  },
 };
 
 export default nextConfig;
