@@ -44,6 +44,12 @@ function validateDepositPayload(payload: DepositPayload) {
   if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
     throw new Error("amount must be a positive number");
   }
+
+  // Minimum deposit: 0.01 HBAR to prevent spam and ensure meaningful rewards
+  const MIN_DEPOSIT_HBAR = 0.01;
+  if (numericAmount < MIN_DEPOSIT_HBAR) {
+    throw new Error(`Minimum deposit is ${MIN_DEPOSIT_HBAR} HBAR`);
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -66,19 +72,24 @@ export async function POST(req: NextRequest) {
       memo: payload.memo,
     });
 
+    const depositorId = payload.depositor || process.env.OPERATOR_ID || "unknown";
+    
     await addActivity(payload.assetId, {
       type: "DEPOSIT_REWARDS",
-      by: payload.depositor || process.env.OPERATOR_ID || undefined,
+      by: depositorId,
       amount: payload.amount,
       txLink: result.link,
       at: new Date().toISOString(),
     });
+
+    console.log(`[deposit-rewards] ${depositorId} deposited ${payload.amount} HBAR to ${asset.distributor}`);
 
     return NextResponse.json({
       ok: true,
       assetId: payload.assetId,
       distributor: asset.distributor,
       amount: payload.amount,
+      depositor: depositorId,
       transactionId: result.transactionId,
       status: result.status,
       txLink: result.link,

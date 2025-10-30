@@ -526,7 +526,7 @@ export default function HWCProvider({ children }: { children: React.ReactNode })
             
             throw new Error(`Transaction failed: ${e?.message || e}`);
         }
-    }, [accountId, hashConnect, pairing]);
+    }, [accountId, hashConnect, isExtensionAvailable, pairing]);
 
     const value = useMemo(() => ({
         accountId,

@@ -107,6 +107,16 @@ export default function CreatePage() {
             </div>
           </div>
         )}
+        {accountId && (
+          <div className="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-foreground/80">
+            <p className="font-medium text-amber-600 dark:text-amber-400">Important: Token Association Required</p>
+            <p className="mt-1">
+              After creating an asset, you&apos;ll need to associate the NFT and Fraction tokens with your account before you can receive them.
+              The system will automatically transfer them to you once associated. If transfers fail, visit the asset page and manually
+              claim your tokens.
+            </p>
+          </div>
+        )}
       </div>
 
       {error && <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}

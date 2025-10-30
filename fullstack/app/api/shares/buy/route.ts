@@ -1,23 +1,44 @@
 import { NextRequest, NextResponse } from "next/server";
-import db from "@/lib/db";
-export async function POST(req: NextRequest){
-  const body = await req.formData();
-  const assetId = String(body.get("assetId")||"");
-  const amount = Number(body.get("amount")||"0");
-  const buyer = "0.0.user"; // demo
-  const asset = db.assets.find(a=>a.id===assetId);
-  if(!asset) return NextResponse.json({error:"Asset not found"},{status:404});
-  if(amount<=0) return NextResponse.json({error:"Invalid amount"},{status:400});
-  if(asset.sharesAvailable<amount) return NextResponse.json({error:"Not enough shares"},{status:400});
-  asset.sharesAvailable -= amount;
-  const arr = db.holdings.get(buyer) || [];
-  const existing = arr.find(h=>h.assetId===assetId);
-  if(existing) existing.shares += amount; else arr.push({assetId, shares: amount, pendingRewards: 0});
-  db.holdings.set(buyer, arr);
-  const at = new Date().toISOString();
-  const activity = db.activity.get(assetId) || [];
-  activity.push({type:"BUY_SHARES", by: buyer, amount, txLink:"#", at});
-  db.activity.set(assetId, activity);
-  return NextResponse.redirect(new URL(`/asset/${assetId}`, req.url));
-}
+import { transferFtToAccount } from "@/lib/hedera";
+
 export const dynamic = 'force-dynamic';
+
+export async function POST(req: NextRequest) {
+  const body = await req.json().catch(() => null);
+  if (!body) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  
+  const { tokenId, recipient, amount, assetId } = body;
+  
+  console.log("[buy-shares] Received request:", { tokenId, recipient, amount, assetId });
+  
+  if (!tokenId || !recipient || !amount) {
+    const missing = [];
+    if (!tokenId) missing.push("tokenId");
+    if (!recipient) missing.push("recipient");
+    if (!amount) missing.push("amount");
+    console.error("[buy-shares] Missing fields:", missing);
+    return NextResponse.json({ error: `Missing fields: ${missing.join(", ")}` }, { status: 400 });
+  }
+  
+  try {
+    // Server-side transfer from treasury (operator account) to buyer
+    const result = await transferFtToAccount({
+      tokenId,
+      toAccountId: recipient,
+      amount: Number(amount),
+      memo: `Share purchase${assetId ? ` for ${assetId}` : ''}`,
+    });
+    
+    console.log("[buy-shares] Transfer successful:", result);
+    
+    return NextResponse.json({ 
+      ok: true, 
+      transactionId: result.transactionId,
+      link: result.link,
+      status: result.status
+    });
+  } catch (e: any) {
+    console.error("[buy-shares] Error:", e);
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+}

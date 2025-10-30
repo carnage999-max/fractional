@@ -1,5 +1,6 @@
 import {
   AccountId,
+  AccountInfoQuery,
   Client,
   ContractExecuteTransaction,
   ContractFunctionParameters,
@@ -87,6 +88,19 @@ export function getClient(): Client {
   return client;
 }
 
+/**
+ * Get a client WITHOUT operator credentials set
+ * Use this for composing transactions that will be signed by user wallets
+ */
+export function getClientWithoutOperator(): Client {
+  const network = resolveNetwork();
+  const factory = NETWORK_FACTORIES[network];
+  if (!factory) {
+    throw new Error(`Unsupported Hedera network: ${network}`);
+  }
+  return factory();
+}
+
 export function getHashscanBaseUrl(): string {
   const network = cachedNetwork ?? resolveNetwork();
   return HASHSCAN_BASE[network];
@@ -95,6 +109,85 @@ export function getHashscanBaseUrl(): string {
 export function toHashscanLink(type: "token" | "contract" | "account" | "transaction", id: string) {
   const base = getHashscanBaseUrl();
   return `${base}/${type}/${id}`;
+}
+
+/**
+ * Check if an account is associated with specific tokens
+ * Returns an object mapping tokenId to boolean (true if associated)
+ */
+export async function checkTokenAssociations({
+  accountId,
+  tokenIds,
+}: {
+  accountId: string;
+  tokenIds: string[];
+}): Promise<Record<string, boolean>> {
+  const client = getClient();
+  const account = AccountId.fromString(accountId);
+  
+  try {
+    const query = new AccountInfoQuery().setAccountId(account);
+    const accountInfo = await query.execute(client);
+    
+    // Get the list of associated tokens from tokenRelationships (it's a Map)
+    const associatedTokens = new Set<string>();
+    if (accountInfo.tokenRelationships) {
+      for (const [tokenId] of accountInfo.tokenRelationships) {
+        associatedTokens.add(tokenId.toString());
+      }
+    }
+    
+    // Check each requested token
+    const result: Record<string, boolean> = {};
+    for (const tokenId of tokenIds) {
+      result[tokenId] = associatedTokens.has(tokenId);
+    }
+    
+    console.log("[checkTokenAssociations]", { accountId, tokenIds, result });
+    return result;
+  } catch (error: any) {
+    console.error("[checkTokenAssociations] Error:", error);
+    // If account info query fails, assume tokens are not associated
+    return tokenIds.reduce((acc, tokenId) => ({ ...acc, [tokenId]: false }), {});
+  }
+}
+
+export async function composeTokenAssociation({
+  accountId,
+  tokenIds,
+}: {
+  accountId: string;
+  tokenIds: string[];
+}) {
+  console.log("[composeTokenAssociation] START - Input params:", { accountId, tokenIds });
+  
+  // Use client WITHOUT operator to avoid operator account being used in transaction ID
+  const client = getClientWithoutOperator();
+  console.log("[composeTokenAssociation] Created client without operator");
+  
+  const account = AccountId.fromString(accountId);
+  const tokens = tokenIds.map(id => TokenId.fromString(id));
+
+  // Create transaction with user's account as the transaction ID
+  const transactionId = TransactionId.generate(accountId);
+  console.log("[composeTokenAssociation] Generated TransactionId:", transactionId.toString());
+  
+  const tx = new TokenAssociateTransaction()
+    .setAccountId(account)
+    .setTokenIds(tokens)
+    .setTransactionId(transactionId)
+    .setNodeAccountIds([client._network.getNodeAccountIdsForExecute()[0]]);
+
+  console.log("[composeTokenAssociation] Transaction built, about to freeze");
+  
+  // Freeze with the non-operator client
+  const frozen = await tx.freezeWith(client);
+  const bytes = frozen.toBytes();
+  
+  console.log("[composeTokenAssociation] Transaction frozen, final transactionId:", frozen.transactionId?.toString());
+  console.log("[composeTokenAssociation] Returning transaction with ID:", transactionId.toString());
+  
+  return { bytes: Buffer.from(bytes).toString("base64"), transactionId: transactionId.toString() };
 }
 
 export async function composeFtTransfer({
@@ -108,18 +201,63 @@ export async function composeFtTransfer({
   recipient: string;
   amount: number;
 }) {
-  const client = getClient();
+  // Use client WITHOUT operator to avoid operator account being used in transaction ID
+  const client = getClientWithoutOperator();
   const tid = TokenId.fromString(tokenId);
 
+  const transactionId = TransactionId.generate(sender);
   const tx = new TransferTransaction()
     .addTokenTransfer(tid, sender, -amount)
-    .addTokenTransfer(tid, recipient, amount);
-
-  const transactionId = TransactionId.generate(sender);
-  tx.setTransactionId(transactionId);
+    .addTokenTransfer(tid, recipient, amount)
+    .setTransactionId(transactionId)
+    .setNodeAccountIds([client._network.getNodeAccountIdsForExecute()[0]]);
 
   const frozen = await tx.freezeWith(client);
   const bytes = frozen.toBytes();
+  
+  console.log("[composeFtTransfer] Generated transaction:", {
+    tokenId,
+    sender,
+    recipient,
+    amount,
+    transactionId: transactionId.toString()
+  });
+  
+  return { bytes: Buffer.from(bytes).toString("base64"), transactionId: transactionId.toString() };
+}
+
+export async function composeNftTransfer({
+  tokenId,
+  serialNumber,
+  sender,
+  recipient,
+}: {
+  tokenId: string;
+  serialNumber: number;
+  sender: string;
+  recipient: string;
+}) {
+  // Use client WITHOUT operator to avoid operator account being used in transaction ID
+  const client = getClientWithoutOperator();
+  const tid = TokenId.fromString(tokenId);
+
+  const transactionId = TransactionId.generate(sender);
+  const tx = new TransferTransaction()
+    .addNftTransfer(tid, serialNumber, sender, recipient)
+    .setTransactionId(transactionId)
+    .setNodeAccountIds([client._network.getNodeAccountIdsForExecute()[0]]);
+
+  const frozen = await tx.freezeWith(client);
+  const bytes = frozen.toBytes();
+  
+  console.log("[composeNftTransfer] Generated transaction:", {
+    tokenId,
+    serialNumber,
+    sender,
+    recipient,
+    transactionId: transactionId.toString()
+  });
+  
   return { bytes: Buffer.from(bytes).toString("base64"), transactionId: transactionId.toString() };
 }
 

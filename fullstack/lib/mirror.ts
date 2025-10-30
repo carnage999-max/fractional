@@ -8,12 +8,18 @@ export async function mirrorFetch(path: string) {
 }
 
 export async function getAccount(accountId: string) {
-  return mirrorFetch(`/accounts/${accountId}`);
+  const data = await mirrorFetch(`/accounts/${accountId}`);
+  console.log(`[mirror] getAccount(${accountId}) response:`, JSON.stringify(data, null, 2).substring(0, 500));
+  console.log(`[mirror] Tokens array length:`, data?.tokens?.length || 0);
+  console.log(`[mirror] Balance object:`, data?.balance);
+  return data;
 }
 
 export async function getAccountTokenBalance(accountId: string, tokenId: string): Promise<number> {
   const data = await getAccount(accountId);
-  const token = (data?.tokens || []).find((t: any) => t.token_id === tokenId);
+  // Tokens are nested inside balance object in mirror node API v1
+  const tokens = data?.balance?.tokens ?? data?.tokens ?? [];
+  const token = tokens.find((t: any) => t.token_id === tokenId);
   if (!token) return 0;
   return Number(token.balance || 0);
 }

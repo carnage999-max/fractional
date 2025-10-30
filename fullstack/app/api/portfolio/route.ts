@@ -17,16 +17,34 @@ export async function GET(req: NextRequest) {
       listAssets(1000),
     ]);
 
+    console.log("[portfolio] Account:", account);
+    console.log("[portfolio] Total assets in registry:", assets.length);
+    console.log("[portfolio] Tokens from mirror node:", accountInfo?.tokens?.length || 0);
+
     const tokenBalances = new Map<string, number>();
-    for (const token of accountInfo?.tokens ?? []) {
+    // Tokens are nested inside balance object in mirror node response
+    const tokens = accountInfo?.balance?.tokens ?? accountInfo?.tokens ?? [];
+    for (const token of tokens) {
       if (token?.token_id) {
-        tokenBalances.set(token.token_id, Number(token.balance || 0));
+        const balance = Number(token.balance || 0);
+        tokenBalances.set(token.token_id, balance);
+        console.log(`[portfolio] Token ${token.token_id}: ${balance}`);
       }
     }
 
+    console.log("[portfolio] Token balances map:", Object.fromEntries(tokenBalances));
+    console.log("[portfolio] Asset fraction tokens:", assets.map(a => ({ id: a.id, name: a.name, fractionTokenId: a.fractionTokenId })));
+
+    const assetsWithBalances = assets.filter((asset) => {
+      const balance = tokenBalances.get(asset.fractionTokenId) ?? 0;
+      console.log(`[portfolio] Checking asset ${asset.name} (${asset.fractionTokenId}): balance = ${balance}`);
+      return balance > 0;
+    });
+
+    console.log("[portfolio] Assets with balances:", assetsWithBalances.length);
+
     const holdings = await Promise.all(
-      assets
-        .filter((asset) => tokenBalances.get(asset.fractionTokenId) ?? 0)
+      assetsWithBalances
         .map(async (asset) => {
           const shares = tokenBalances.get(asset.fractionTokenId) ?? 0;
           let pendingTinybars = "0";

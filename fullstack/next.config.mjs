@@ -45,11 +45,7 @@ const nextConfig = {
     ];
   },
 
-  // ✅ App Router stability settings
-  experimental: {
-    appDir: true,
-    serverActions: true,
-  },
+  // ✅ Webpack configuration
   webpack(config) {
   config.output.chunkFilename = 'static/chunks/[name].[contenthash].js';
   return config;
