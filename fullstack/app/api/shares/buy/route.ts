@@ -20,3 +20,4 @@ export async function POST(req: NextRequest){
   db.activity.set(assetId, activity);
   return NextResponse.redirect(new URL(`/asset/${assetId}`, req.url));
 }
+export const dynamic = 'force-dynamic';

@@ -37,11 +37,11 @@ applications:
             - 'echo "Build complete! Checking build artifacts..."'
             - ls -la .next/static/chunks/ | head -20
             - echo "Build completed at $(date +%s)" > .next/BUILD_TIMESTAMP
-            # If a CloudFront Distribution ID is provided via CF_DIST_ID env var, invalidate the chunks folder
+            # If a CloudFront Distribution ID is provided via CF_DIST_ID env var, invalidate HTML and static assets
             - |
               if [ -n "$CF_DIST_ID" ]; then
-                echo "CF_DIST_ID provided, creating invalidation for /_next/static/chunks/* ..."
-                aws cloudfront create-invalidation --distribution-id "$CF_DIST_ID" --paths "/_next/static/chunks/*" || true
+                echo "CF_DIST_ID provided, creating invalidation for /_next/static/chunks/* and /*.html ..."
+                aws cloudfront create-invalidation --distribution-id "$CF_DIST_ID" --paths "/_next/static/chunks/*" "/_next/static/*" "/*.html" "/index.html" || true
               else
                 echo "CF_DIST_ID not set, skipping CloudFront invalidation."
               fi
