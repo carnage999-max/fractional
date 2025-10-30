@@ -3,6 +3,7 @@ import crypto from "crypto";
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  swcMinify: false,
 
   // ✅ Prevent inconsistent builds between deploys
   generateBuildId: async () => {
