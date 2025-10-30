@@ -1,15 +1,31 @@
 import { Button } from "@/components/ui/Button";
 import FeatureCard from "@/components/FeatureCard";
 import AssetCard from "@/components/AssetCard";
-import { Coins, Lock, Rocket, Sparkles, TrendingUp, Shield, Globe, Users, Zap, Target, ArrowRight, CheckCircle2, Star, BarChart3, Wallet, PieChart } from "lucide-react";
+import { Coins, Lock, Rocket, Sparkles, ArrowRight, Shield, Globe, Users } from "lucide-react";
 import { Asset } from "@/lib/types";
 import { getBaseUrl } from "@/lib/baseUrl";
 
 async function getFeatured(): Promise<Asset[]> {
-  const res = await fetch(`${getBaseUrl()}/api/assets?limit=3`, {cache: "no-store"});
   try {
-    return (await res.json()).items as Asset[];
-  } catch {
+    const res = await fetch(`${getBaseUrl()}/api/assets?limit=3`, { cache: "no-store" });
+    if (!res.ok) {
+      console.error(`[home] Failed to load featured assets: ${res.status} ${res.statusText}`);
+      return [];
+    }
+
+    const data = await res.json().catch((error) => {
+      console.error("[home] Failed to parse featured assets response", error);
+      return null;
+    });
+
+    if (!data || !Array.isArray(data.items)) {
+      console.warn("[home] Featured assets response missing items array");
+      return [];
+    }
+
+    return data.items as Asset[];
+  } catch (error) {
+    console.error("[home] Unexpected error loading featured assets", error);
     return [];
   }
 }
