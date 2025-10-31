@@ -92,7 +92,7 @@ async function fetchRegistryDocument(fileId: string): Promise<RegistryDocument> 
   throw lastError ?? new Error(`Failed to read registry file ${fileId}`);
 }
 
-async function discoverRegistryFileId(): Promise<string | null> {
+async function discoverRegistryFileId(): Promise<{ fileId: string; doc: RegistryDocument } | null> {
   const operatorAccount = process.env.OPERATOR_ID;
   if (!operatorAccount) return null;
 
@@ -111,13 +111,12 @@ async function discoverRegistryFileId(): Promise<string | null> {
     const files: Array<{ file_id?: string }> = Array.isArray(json.files) ? json.files : [];
 
     for (const entry of files) {
-      const candidateId = entry.file_id;
+      const candidateId = entry.file_id?.trim();
       if (!candidateId) continue;
       try {
         const doc = await fetchRegistryDocument(candidateId);
         if (doc.kind === REGISTRY_KIND && Array.isArray(doc.assets)) {
-          process.env.ASSET_REGISTRY_FILE_ID = candidateId;
-          return candidateId;
+          return { fileId: candidateId, doc };
         }
       } catch {
         continue;
@@ -131,42 +130,74 @@ async function discoverRegistryFileId(): Promise<string | null> {
 }
 
 async function ensureRegistry(): Promise<{ fileId: string; doc: RegistryDocument }> {
-  let fileId = process.env.ASSET_REGISTRY_FILE_ID ?? (await discoverRegistryFileId());
+  let fileId = process.env.ASSET_REGISTRY_FILE_ID?.trim() || null;
+  let doc: RegistryDocument | null = null;
+
+  if (fileId) {
+    try {
+      doc = await fetchRegistryDocument(fileId);
+      if (doc.kind !== REGISTRY_KIND) {
+        console.warn(`Registry file ${fileId} has unexpected kind ${doc.kind}; ignoring`);
+        doc = null;
+      }
+    } catch (error) {
+      console.error(`Failed to read registry file ${fileId}; attempting discovery`, error);
+      doc = null;
+    }
+  }
+
+  if (!doc || doc.assets.length === 0) {
+    const discovered = await discoverRegistryFileId();
+    if (discovered) {
+      fileId = discovered.fileId;
+      doc = discovered.doc;
+      process.env.ASSET_REGISTRY_FILE_ID = fileId;
+    }
+  }
+
   if (!fileId) {
     const created = await storeJsonInHfs(emptyRegistry, { memo: REGISTRY_MEMO });
     fileId = created.fileId;
+    doc = emptyRegistry;
     process.env.ASSET_REGISTRY_FILE_ID = fileId;
     console.warn(`Created new asset registry file on HFS: ${fileId}. Persist this ID in ASSET_REGISTRY_FILE_ID.`);
-    return { fileId, doc: emptyRegistry };
   }
 
-  try {
-    const doc = await fetchRegistryDocument(fileId);
-    if (doc.kind !== REGISTRY_KIND) {
-      console.warn(`Registry file ${fileId} has unexpected kind ${doc.kind}; resetting to empty registry.`);
-      return { fileId, doc: emptyRegistry };
-    }
-    return { fileId, doc };
-  } catch (error) {
-    console.error("Failed to read asset registry from HFS; falling back to empty registry", error);
-    return { fileId, doc: emptyRegistry };
-  }
+  doc = doc ?? emptyRegistry;
+  return { fileId, doc };
 }
 
 async function loadRegistry(): Promise<{ fileId: string | null; doc: RegistryDocument }> {
-  let fileId = process.env.ASSET_REGISTRY_FILE_ID ?? (await discoverRegistryFileId());
-  if (!fileId) return { fileId: null, doc: emptyRegistry };
-  try {
-    const doc = await fetchRegistryDocument(fileId);
-    if (doc.kind !== REGISTRY_KIND) {
-      console.warn(`Registry file ${fileId} has unexpected kind ${doc.kind}; returning empty registry.`);
-      return { fileId, doc: emptyRegistry };
+  let fileId = process.env.ASSET_REGISTRY_FILE_ID?.trim() || null;
+  let doc: RegistryDocument | null = null;
+
+  if (fileId) {
+    try {
+      doc = await fetchRegistryDocument(fileId);
+      if (doc.kind !== REGISTRY_KIND) {
+        console.warn(`Registry file ${fileId} has unexpected kind ${doc.kind}; ignoring`);
+        doc = null;
+      }
+    } catch (error) {
+      console.error(`Failed to read asset registry ${fileId}`, error);
+      doc = null;
     }
-    return { fileId, doc };
-  } catch (error) {
-    console.error("Failed to read asset registry from HFS", error);
-    return { fileId, doc: emptyRegistry };
   }
+
+  if (!doc || doc.assets.length === 0) {
+    const discovered = await discoverRegistryFileId();
+    if (discovered) {
+      fileId = discovered.fileId;
+      doc = discovered.doc;
+      process.env.ASSET_REGISTRY_FILE_ID = fileId;
+    }
+  }
+
+  if (!fileId || !doc) {
+    return { fileId: fileId ?? null, doc: emptyRegistry };
+  }
+
+  return { fileId, doc };
 }
 
 async function persistRegistry(fileId: string, doc: RegistryDocument) {
