@@ -6,7 +6,7 @@ export default function Footer(){
         <p>© {new Date().getFullYear()} Fractional — Built on Hedera</p>
         <div className="flex items-center gap-4">
           <Link href="https://hashscan.io" className="hover:text-foreground" target="_blank">HashScan</Link>
-          <Link href="#" className="hover:text-foreground">GitHub</Link>
+          <Link href="https://github.com/Fractional-three/fractional" className="hover:text-foreground">GitHub</Link>
         </div>
       </div>
     </div>
