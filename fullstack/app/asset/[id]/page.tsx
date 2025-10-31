@@ -215,13 +215,9 @@ export default function AssetDetail({ params }: { params: { id: string } }) {
       if (!buyResult.ok) {
         throw new Error(buyResult.error || "Failed to purchase shares");
       }
-
-      const successMessage =
-        buyResult.message ||
-        (buyResult.transactionId ? `Share purchase successful! TX: ${buyResult.transactionId}` : "Share purchase successful!");
-
-      setMsg(successMessage);
-      toast.success(successMessage);
+      
+      setMsg(`Share purchase successful! TX: ${buyResult.transactionId}`);
+      toast.success("Share purchase completed successfully!");
       
       // Refresh asset data to show updated holdings
       window.location.reload();

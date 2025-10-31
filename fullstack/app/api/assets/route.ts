@@ -7,7 +7,6 @@ import {
   deployDividendDistributor,
   storeJsonInHfs,
   toHashscanLink,
-  transferFtToAccount,
   transferNftToAccount,
 } from "@/lib/hedera";
 import { uploadMetadataToIpfs } from "@/lib/ipfs";
@@ -137,8 +136,8 @@ export async function POST(req: NextRequest) {
     let association: { transactionId?: string; link?: string; error?: string } | null = null;
     let nftTransfer: { transactionId: string; link: string; status: string } | null = null;
     let nftTransferError: string | null = null;
-    let ftTransfer: { transactionId: string; link: string; status: string } | null = null;
-    let ftTransferError: string | null = null;
+    const ftTransfer: { transactionId: string; link: string; status: string } | null = null;
+    const ftTransferError: string | null = "TRANSFER_SKIPPED";
     try {
       association = await associateTokenToContract(deployment.contractId, tokens.fraction.tokenId);
     } catch (err: any) {
@@ -161,18 +160,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    try {
-      ftTransfer = await transferFtToAccount({
-        tokenId: tokens.fraction.tokenId,
-        amount: payload.totalShares,
-        toAccountId: creatorAccount,
-        memo: `Asset ${assetId} supply transfer`,
-      });
-    } catch (err: any) {
-      ftTransferError = err?.message || String(err);
-      console.error("Failed to transfer fraction supply to creator:", ftTransferError);
-    }
-
     const newAsset = await createAssetRecord({
       id: assetId,
       name: payload.name,
@@ -182,7 +169,7 @@ export async function POST(req: NextRequest) {
       nftTokenId: tokens.nft.tokenId,
       fractionTokenId: tokens.fraction.tokenId,
       distributor: deployment.contractId,
-      treasuryAccountId: ftTransferError ? operatorAccount : creatorAccount,
+      treasuryAccountId: operatorAccount,
       metadataCid: metadataUpload.cid,
       metadataUrl: metadataUpload.url,
       metadataGatewayUrl: metadataUpload.gatewayUrl,
@@ -239,30 +226,14 @@ export async function POST(req: NextRequest) {
               } as const,
             ]
           : []),
-        ...(ftTransfer
-          ? [
-              {
-                type: "TRANSFER_FT",
-                by: operatorAccount,
-                amount: String(payload.totalShares),
-                txLink: ftTransfer.link,
-                at: createdAtIso,
-                to: creatorAccount,
-              } as const,
-            ]
-          : ftTransferError
-          ? [
-              {
-                type: "TRANSFER_FT_FAILED",
-                by: operatorAccount,
-                amount: String(payload.totalShares),
-                txLink: "",
-                at: createdAtIso,
-                to: creatorAccount,
-                error: ftTransferError,
-              } as const,
-            ]
-          : []),
+        {
+          type: "FT_HELD_IN_TREASURY",
+          by: operatorAccount,
+          amount: String(payload.totalShares),
+          txLink: tokens.fraction.mintLink,
+          at: createdAtIso,
+          to: operatorAccount,
+        } as const,
       ],
     });
 

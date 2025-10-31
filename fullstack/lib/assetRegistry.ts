@@ -204,13 +204,7 @@ async function enrichRecord(record: AssetRecord): Promise<Asset> {
 }
 
 export async function listAssets(limit = 100, search = ""): Promise<Asset[]> {
-  const { fileId, doc } = await loadRegistry();
-  console.log("[assetRegistry] listAssets", {
-    fileId,
-    assetCount: doc.assets.length,
-    search,
-    limit,
-  });
+  const { doc } = await loadRegistry();
   const term = normaliseSearch(search);
   const filtered = term
     ? doc.assets.filter((asset) =>
