@@ -44,15 +44,15 @@ function normaliseSearch(value: string) {
 async function fetchRegistryDocument(fileId: string): Promise<RegistryDocument> {
   const sources: Array<() => Promise<string>> = [
     async () => {
+      const buffer = await readHfsFileContents(fileId);
+      return buffer.toString("utf8");
+    },
+    async () => {
       const res = await fetch(`${MIRROR}/files/${fileId}/contents`, { cache: "no-store" });
       if (!res.ok) {
         throw new Error(`Mirror read failed with status ${res.status}`);
       }
       return await res.text();
-    },
-    async () => {
-      const buffer = await readHfsFileContents(fileId);
-      return buffer.toString("utf8");
     },
   ];
 
