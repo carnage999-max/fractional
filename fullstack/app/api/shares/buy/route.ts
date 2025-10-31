@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { transferFtToAccount } from "@/lib/hedera";
+// import { transferFtToAccount } from "@/lib/hedera";
 
 export const dynamic = 'force-dynamic';
 
@@ -21,21 +21,16 @@ export async function POST(req: NextRequest) {
   }
   
   try {
-    // Server-side transfer from treasury (operator account) to buyer
-    const result = await transferFtToAccount({
-      tokenId,
-      toAccountId: recipient,
-      amount: Number(amount),
-      memo: `Share purchase${assetId ? ` for ${assetId}` : ''}`,
-    });
-    
-    console.log("[buy-shares] Transfer successful:", result);
-    
-    return NextResponse.json({ 
-      ok: true, 
-      transactionId: result.transactionId,
-      link: result.link,
-      status: result.status
+    // NOTE: For the current MVP demo the treasury transfer is skipped because
+    // fractional supply now lives in the creator's wallet rather than the operator.
+    // This stubbed response keeps the UI flow working without moving tokens server-side.
+    console.warn("[buy-shares] Treasury transfer skipped for MVP demo flow");
+    return NextResponse.json({
+      ok: true,
+      transactionId: null,
+      link: null,
+      status: "TRANSFER_SKIPPED",
+      message: "Server-side transfer skipped; please handle peer-to-peer settlement manually.",
     });
   } catch (e: any) {
     console.error("[buy-shares] Error:", e);
