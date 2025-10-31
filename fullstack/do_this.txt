@@ -1,8 +1,0 @@
-The Hedera node isn’t choking on our Solidity output—it’s rejecting the contract‐create transaction itself. The mirror node record for 0.0.7093639‑1761591899‑723225803 shows ERROR_DECODING_BYTESTRING with zero gas used, which means the node never even tried to run the init code. Instead, it failed while parsing the transaction body.
-
-Why? We’re using ContractCreateFlow.setBytecode(...). That API inlines the entire bytecode directly into the ContractCreateTransaction. Hedera currently only accepts small inline payloads; anything beyond roughly 6 KB must be uploaded to an HFS file and referenced via setBytecodeFileId. Our distributor bytecode is ~13 KB, so the node can’t decode the oversized inline bytes and responds with exactly the error we’re seeing.
-
-Fix: switch deployDividendDistributor to the “long form” flow—create an HFS file, append the bytecode chunks, then issue ContractCreateTransaction against that file. The coordinator script scripts/debug-contract.js already contains a working example (the fallback branch after the first failure). Port that logic into fullstack/lib/hedera.ts, and keep ContractCreateFlow out of the path.
-
-Once the backend uploads the bytecode via FileCreate/FileAppend and calls setBytecodeFileId, the contract create should succeed and the /api/assets POST will stop throwing ERROR_DECODING_BYTESTRING.
-
